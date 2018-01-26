@@ -2,47 +2,43 @@
 #include <TimeLib.h>
 
 //User controlled variables
+int perform_adjust = 1;				      // weather time_per_degree is auto adjust
+int max_running_time = 4 * 60;			// 4 hours maximum running time
+byte schedule[7];	
+int target_temp=30;			            // contains usage schedule, 1 hour intervals
 
 //System variables
+// Prototype
+int debug=1;
+int sensorPin  =  A0;     // select the input  pin for the potentiometer 
+int HeaterPin  =  12;   // select the pin for  the LED
+int sensorValue =  0;  // variable to  store  the value  coming  from  the sensor
+int ProgrammedLed=13;
+const byte stop_button = 2; // Stop programming / manual mode
+int time_per_degree = 5; 			    // time to raise 1 degree, in secs
+int loop_time = 100;  					      // time to sleep earch loop, in secs
+int heater_on=0;						          // heater status
+volatile int stop_programm = 0;					    // stop schedule running
 
 //Internal variables
+int count=1;
+int time_to_warm;	  // time left to reach target_temp, in secs
+int time_to_sched, time_in_sched;
+time_t date, next_schedule_ini, next_schedule_fin, t_now;						            // date and time. time left for next use
+time_t init_time, fin_time, running_time;	// running time control
+int water_temp;			  // current water temperature vs target temperature
+int init_temp, final_temp;			    // controls autoadjustment
 
 //Prototype
 #include <OneWire.h>
 #include <DallasTemperature.h>
-//
 // Data wire is plugged into port 2 on the Arduino
 #define ONE_WIRE_BUS 3
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
 OneWire oneWire(ONE_WIRE_BUS);
 // Pass our oneWire reference to Dallas Temperature.
 DallasTemperature sensors(&oneWire);
-
-
-// Prototype
-int sensorPin  =  A0;     // select the input  pin for the potentiometer 
-int HeaterPin  =  12;   // select the pin for  the LED
-int sensorValue =  0;  // variable to  store  the value  coming  from  the sensor
-const byte stop_button = 2; // Stop programming / manual mode
-
-
-///
-int debug=1;
-int count=1;
-int loop_time = 100;  					      // time to sleep earch loop, in secs
-int time_per_degree = 5; 			    // time to raise 1 degree, in secs
-int perform_adjust = 1;				      // weather time_per_degree is auto adjust
-int time_to_warm;	  // time left to reach target_temp, in secs
-int time_to_sched, time_in_sched;
-time_t date, next_schedule_ini, next_schedule_fin, t_now;						            // date and time. time left for next use
-time_t init_time, fin_time, running_time;	// running time control
-int max_running_time = 4 * 60;			// 4 hours maximum running time
-int water_temp, target_temp;			  // current water temperature vs target temperature
-int init_temp, final_temp;			    // controls autoadjustment
-int heater_on=0;						          // heater status
-byte schedule[7];				            // contains usage schedule, 1 hour intervals
-volatile int stop_programm = 0;					    // stop schedule running
-int ProgrammedLed=13;
+//
 
 void stop_programm_int(){
     stop_programm=!stop_programm;
@@ -56,7 +52,12 @@ int set_date(time_t date){
 time_t get_date(){
   // Gets date and time from external source
   };
-int load_schedule(byte *schedule){};
+
+int load_schedule(byte *schedule){
+	
+	
+};
+
 int get_watertemp(){
     // Prototype
     sensorValue =  analogRead(sensorPin);
@@ -72,15 +73,21 @@ int get_next_schedule(){
   //return_time=(now()+10000);
   return return_time;
   };
+  
 int power_on_heater(){
   heater_on=1;
   digitalWrite(HeaterPin, HIGH);
   };
+  
 int power_off_heater(){
   heater_on=0;
   digitalWrite(HeaterPin, LOW);
   };
-int log_session(){};
+  
+int log_session(){
+	
+};
+
 int display(int h_status, int temp1, int temp2, int r_time, time_t today, time_t next){
   Serial.print("Water temperature: ");
   Serial.println(temp1,DEC);
@@ -111,12 +118,13 @@ void setup() {
   pinMode(ProgrammedLed, OUTPUT);
   attachInterrupt(digitalPinToInterrupt(stop_button),stop_programm_int, RISING);
   Serial.begin(9600);
-  target_temp=30;
   ///
   date = get_date();
   set_date(date);
+  // Prototype
   next_schedule_ini=now()+100;
   next_schedule_fin=next_schedule_ini+100;
+  /// 
   load_schedule(schedule);
   digitalWrite(ProgrammedLed,!stop_programm);
   sensors.begin();
@@ -148,7 +156,7 @@ void loop() {
       log_session();
     }
   }
-  if( (count % 5) == 0) display(heater_on, water_temp, target_temp, running_time, now(), next_schedule_ini);
+  if( (count % 5) == 0) display(heater_on, water_temp, target_temp, running_time, now(), next_schedule_ini); // Refresh display every 5 loops
   delay(loop_time);
   count++;
   //if(debug) Serial.println(count);
