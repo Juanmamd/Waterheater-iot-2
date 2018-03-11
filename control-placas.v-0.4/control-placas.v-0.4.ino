@@ -3,6 +3,7 @@
 // Project pinout
 // D2	- Stop program button
 // D3	- Read temperature
+// D3	- Not used
 // D4	- Not used
 // D5	- Not used
 // D6	- Not used
@@ -22,10 +23,17 @@
 // A6	- Not used
 // A7	- Not used
 
+// Stimated current consumption: 
+// LCD						200 mA
+// NRF24L01:				14 mA
+// Relay
+// Thermpair K MAX6675: 	50 mA
+// Arduino: 
+
 
 #include <Time.h>
 #include <TimeLib.h>
-#include <Wire.h>
+// #include <Wire.h>
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
 #include <max6675.h>
@@ -39,15 +47,15 @@
 //Internal variables
 
 //Prototype
-#include <OneWire.h>
-#include <DallasTemperature.h>
+// #include <OneWire.h>
+// #include <DallasTemperature.h>
 //
 // Data wire is plugged into port 2 on the Arduino
-#define ONE_WIRE_BUS 3
+// #define ONE_WIRE_BUS 3
 // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-OneWire oneWire(ONE_WIRE_BUS);
+// OneWire oneWire(ONE_WIRE_BUS);
 // Pass our oneWire reference to Dallas Temperature.
-DallasTemperature sensors(&oneWire);
+// DallasTemperature sensors(&oneWire);
 
 #ifdef LCD_DISPLAY
   LiquidCrystal_I2C lcd(I2C_ADDR, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
@@ -293,4 +301,4 @@ void loop() {
 // check maximum working time.
 // serial commands
 // several displays screens
-// energy save for display
+// Low power consumption: LCD, RF, Arduino
