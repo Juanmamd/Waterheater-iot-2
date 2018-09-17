@@ -3,18 +3,18 @@
 // Project pinout
 // D2	- Stop program button
 // D3	- Read temperature
-// D3	- Not used
-// D4	- Not used
+// D3	- Heater LED
+// D4	- Programmed LED
 // D5	- Not used
 // D6	- Not used
 // D7	- Not used
 // D8	- Not used
-// D9	- Not used
-// D10	- Not used
-// D11	- Not used
-// D12	- Heater LED
-// D13	- Programmed LED
-// A0	- Not used
+// D9	- RF24
+// D10	- RF24
+// D11	- RF24
+// D12	- RF24
+// D13	- RF24
+// A0	- sensor pin?
 // A1	- Not used
 // A2	- Not used
 // A3	- Not used
@@ -23,12 +23,12 @@
 // A6	- Not used
 // A7	- Not used
 
-// Stimated current consumption: 
+// Stimated current consumption:
 // LCD						200 mA
 // NRF24L01:				14 mA
 // Relay
 // Thermpair K MAX6675: 	50 mA
-// Arduino: 
+// Arduino:
 
 
 #include <Time.h>
@@ -59,41 +59,23 @@
 
 #ifdef LCD_DISPLAY
   LiquidCrystal_I2C lcd(I2C_ADDR, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
-  byte char_ON[] = {
-  B11111,
-  B10001,
-  B10101,
-  B10101,
-  B10101,
-  B10101,
-  B10001,
-  B11111
-  };
-  byte char_OFF[] = {
-  B11111,
-  B10001,
-  B10001,
-  B10001,
-  B10001,
-  B10001,
-  B10001,
-  B11111
-  };
+  byte char_ON[] = {  B11111,  B10001,  B10101,  B10101,  B10101,  B10101,  B10001,  B11111  };
+  byte char_OFF[] = {  B11111,  B10001,  B10001,  B10001,  B10001,  B10001,  B10001,  B11111  };
   const int NUM_DISPLAYS=2;
-  char display_line[2][2][16];  
+  char display_line[2][2][16];
   int display_active=1;
 #endif
 
 // Prototype
-int sensorPin  =  A0;     // select the input  pin for the potentiometer 
-int HeaterPin  =  12;   // select the pin for  the LED
+int sensorPin  =  A0;     // select the input  pin for the potentiometer
+int HeaterPin  =  3;   // select the pin for  the LED, relay emulation
 int sensorValue =  0;  // variable to  store  the value  coming  from  the sensor
 const byte stop_button = 2; // Stop programming / manual mode
 
 
 ///
 int debug=1;
-int count=1;
+int count=1;          // Loop count
 int loop_time = 50;  					      // time to sleep earch loop, in secs
 int time_per_degree = 5; 			    // time to raise 1 degree, in secs
 int perform_adjust = 1;				      // weather time_per_degree is auto adjust
@@ -107,7 +89,7 @@ int init_temp, final_temp;			    // controls autoadjustment
 int heater_on=0;						          // heater status
 byte schedule[7];				            // contains usage schedule, 1 hour intervals
 volatile int stop_programm = 0;					    // stop schedule running
-int ProgrammedLed=13;
+int ProgrammedLed=4;
 char week[]={"DLMXJVS"};
 
 void stop_programm_int(){
@@ -119,57 +101,50 @@ void stop_programm_int(){
     // if(LCD_DISPLAY) lcd.clear();
   };
 
-int set_date(time_t date){
-  setTime(22,17,00,28,2,2018);
+int set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
+  setTime(22,00,00,17,9,2018);
   };
-time_t get_date(){
+
+time_t get_date(){ // TODO
   // Gets date and time from external source
   };
-int load_schedule(byte *schedule){};
+
+int load_schedule(byte *schedule){}; // TODO
+
 int get_watertemp(){
     // Prototype
-    sensorValue =  analogRead(sensorPin);
-    sensors.requestTemperatures();
-    return sensors.getTempCByIndex(0);
+    // sensorValue =  analogRead(sensorPin);
+    // sensors.requestTemperatures();
+    // return sensors.getTempCByIndex(0);
     //return sensorValue;
+    return 29;
     ///
 };
-int get_next_schedule(){
+
+int get_next_schedule(){ // TODO
   time_t return_time;
   //return_time=1516595194;
  // return_time=MakeTime(t_next);
   //return_time=(now()+10000);
   return return_time;
   };
+
 int power_on_heater(){
   heater_on=1;
   digitalWrite(HeaterPin, HIGH);
   };
+
 int power_off_heater(){
   heater_on=0;
   digitalWrite(HeaterPin, LOW);
   };
-int log_session(){};
+
+int log_session(){}; // TODO
+
 int display(int h_status, int temp1, int temp2, int r_time, time_t today, time_t next){
-  if(LCD_DISPLAY){
-	// sprintf(display_line[1][1],"%c/%2d/%2d %2d:%2d %3d",week[weekday(today)-1],month(today),day(today),hour(today),minute(today),time_to_sched);
-	// Serial.printf("%c/%2d/%2d %2d:%2d %3d\n",week[weekday(today)-1],month(today),day(today),hour(today),minute(today),time_to_sched);
-    //lcd.clear();
-	// display_line[0][0]='';
-	// display_line[0][0]="";
-	// strcat(display_line[0][0],(char)(week[weekday(today)-1]));
-	// strcat(display_line[0][0],"/");
-	// strcat(display_line[0][0],(char)month(today));
-	// strcat(display_line[0][0],"/");
-	// strcat(display_line[0][0],(char)day(today));
-	// strcat(display_line[0][0]," ");
-	// strcat(display_line[0][0],(char)hour(today));
-	// strcat(display_line[0][0],":");
-	// strcat(display_line[0][0],(char)minute(today));
-	
+  if(LCD_DISPLAY){ // Display Active
+
     lcd.setCursor(0,0);
-    // Serial.print(display_line[0][0]);
-    // lcd.print(display_line[0][0]);
     lcd.print(week[weekday(today)-1]);
     lcd.print("/");
     lcd.print(month(today));
@@ -199,8 +174,8 @@ int display(int h_status, int temp1, int temp2, int r_time, time_t today, time_t
       lcd.setCursor(13,1);
       lcd.print(r_time);
     };
-  }else{
- /*   Serial.print("Water temperature: ");
+  }else{ // No display available
+    Serial.print("Water temperature: ");
     Serial.println(temp1,DEC);
     Serial.print("Target temperature: ");
     Serial.println(temp2);
@@ -211,7 +186,7 @@ int display(int h_status, int temp1, int temp2, int r_time, time_t today, time_t
     Serial.print("Date/Time: ");
     Serial.println(today);
     Serial.print("Time to target: ");
-    Serial.println(next-today);*/
+    Serial.println(next-today);
   };
     if(debug){
       Serial.print("Water temperature: ");
@@ -246,17 +221,18 @@ void setup() {
   ///
   date = get_date();
   set_date(date);
+  // Prototype. Schedule from 10 seconds to 110 seconds from now.
   next_schedule_ini=now()+10;
   next_schedule_fin=next_schedule_ini+100;
   load_schedule(schedule);
   digitalWrite(ProgrammedLed,!stop_programm);
-  sensors.begin();
+  // sensors.begin();
   if(LCD_DISPLAY){
     lcd.begin(16,2,LCD_5x8DOTS);
     lcd.createChar(0, char_OFF);
     lcd.createChar(1, char_ON);
     lcd.clear();
-    lcd.backlight(); 
+    lcd.backlight();
     lcd.setCursor(0,0);
     lcd.print("Water heater IoT");
     delay(1000);
@@ -277,7 +253,7 @@ void loop() {
       power_on_heater();
       init_time = now();
       init_temp = water_temp;
-      heater_on = 1;      
+      heater_on = 1;
     }
   } else {
     //if(debug)Serial.println("En espera");
