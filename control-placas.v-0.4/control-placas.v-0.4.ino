@@ -10,7 +10,7 @@
 // D4	- Programmed LED
 // D5	- Display control
 // D6	- Display line
-// D7	- Not used
+// D7	- DS18B20 Temperature sensor
 // D8	- Not used
 // D9	- RF24
 // D10	- RF24
@@ -52,8 +52,18 @@
   RF24 radio(9,10);
 // #endif
 
+#include <OneWire.h>
+#include <DallasTemperature.h>
+
+// Pin donde se conecta el bus 1-Wire
+const int pinDatosDQ = 7;
+
+// Instancia a las clases OneWire y DallasTemperature
+OneWire oneWireObjeto(pinDatosDQ);
+DallasTemperature sensorDS18B20(&oneWireObjeto);
+
 //User controlled variables
-int target_temp=30;
+float target_temp=35;
 
 // hardware variables
 int sensorPin  =  A0;     // select the input  pin for the potentiometer
@@ -77,8 +87,8 @@ int heater_on=0;						          // heater status
 int sensorValue=0;  // variable to  store  the value  coming  from  the sensor
 int count=1;          // Loop count
 byte schedule[7];				            // contains usage schedule, 1 hour intervals
-int water_temp;			  // current water temperature and target temperature
-int init_temp, final_temp;			    // controls autoadjustment
+float water_temp;			  // current water temperature and target temperature
+float init_temp, final_temp;			    // controls autoadjustment
 int time_to_warm;	  // time left to reach target_temp, in secs
 int time_to_sched, time_in_sched; //
 time_t date, next_schedule_ini, next_schedule_fin, t_now;      // date and time. time left for next use
@@ -113,6 +123,7 @@ void setup() {
         radio.openReadingPipe(1,pipe);
     // #endif
   ///
+  sensorDS18B20.begin();
   date = get_date(); // Ask for remote date
   set_date(date);
   // Prototype. Schedule from 10 seconds to 110 seconds from now.
@@ -167,7 +178,7 @@ void loop() {
 
 void display_show_line(){
   display_line_i++;
-  Serial.println("Displaying line ");
+  Serial.print("Displaying line ");
   Serial.println(display_line_i);
   if(display_line_i>NUM_DISPLAYS)display_line_i=1;
   delay(50);
@@ -196,11 +207,11 @@ void display_control_int(){
 
 int send_data(){
   radio.stopListening();
-  Serial.println(F("Now sending"));
+  Serial.println("Now sending");
   unsigned long start_time = micros();                             // Take the time, and send it.  This will block until complete
 /* Enviar struct */
    if (!radio.write( &start_time, sizeof(unsigned long) )){
-     Serial.println(F("Send failed"));
+     Serial.println("Send failed");
    };
   radio.startListening();                                    // Now, continue listening
   unsigned long started_waiting_at = micros();               // Set up a timeout period, get the current microseconds
@@ -212,19 +223,19 @@ int send_data(){
     };
   };
   if ( timeout ){                                             // Describe the results
-      Serial.println(F("Failed, response ACK timed out."));
+      Serial.println("Failed, response ACK timed out.");
   }else{
       unsigned long got_time;                                 // Grab the response, compare, and send to debugging spew
       radio.read( &got_time, sizeof(unsigned long) );
       unsigned long end_time = micros();
       // Spew it
-      Serial.print(F("Sent "));
+      Serial.print("Sent ");
       Serial.print(start_time);
-      Serial.print(F(", Got response "));
+      Serial.print(", Got response ");
       Serial.print(got_time);
-      Serial.print(F(", Round-trip delay "));
+      Serial.print(", Round-trip delay ");
       Serial.print(end_time-start_time);
-      Serial.println(F(" microseconds"));
+      Serial.println(" microseconds");
   };
   // Try again 1s later
   delay(3000);
@@ -249,13 +260,20 @@ time_t get_date(){ // TODO
 
 int load_schedule(byte *schedule){}; // TODO
 
-int get_watertemp(){  //Implement according to hardware sensor
+float get_watertemp(){  //Implement according to hardware sensor
+    float sensortemp;
     // Prototype
     // sensorValue =  analogRead(sensorPin);
     // sensors.requestTemperatures();
     // return sensors.getTempCByIndex(0);
     //return sensorValue;
-    return 29;
+    sensorDS18B20.requestTemperatures();
+    sensortemp=sensorDS18B20.getTempCByIndex(0);
+    Serial.println("");
+    Serial.println(sensortemp);
+    Serial.println("");
+    return sensortemp;
+    // return 28;
     ///
 };
 
@@ -281,18 +299,28 @@ int power_off_heater(){ // TODO Implement relay control
 
 int log_session(){}; // TODO
 
-int display(int h_status, int temp1, int temp2, int r_time, time_t today, time_t next){
+int display(int h_status, float temp1, float temp2, int r_time, time_t today, time_t next){
+  char buff1[5];
+  char buff2[5];
+  // char *buff3="";
   // TODO implement formatting LCD output
+  // sprintf(buff3,"Param: %2.2f / %2.2f", temp1, temp2);
+  // Serial.println(buff3);
+  // Serial.println(buff1);
+  // Serial.println(buff2);
+  dtostrf(temp1,2,2,buff1);
+  dtostrf(temp2,2,2,buff2);
   sprintf(display_line [0], "%02d/%02d    %02d:%02d  ",day(today),month(today),hour(today),minute(today));
-  sprintf(display_line [1], "Temp: %02dºC->%02dºC", temp1, temp2);
-  sprintf(display_line [2], "Linea 2");
-  sprintf(display_line [3], "Linea 3");
+  sprintf(display_line [1], "T: %s->%s", buff1, buff2);
+  // sprintf(display_line [1], "Temp: %02dC->%02dC  ", temp1, temp2);
+  sprintf(display_line [2], "Linea 2         ");
+  sprintf(display_line [3], "Linea 3         ");
   if(display_active){ // Display Active
     lcd.setCursor(0,0);
     lcd.print(display_line[0]);
     lcd.setCursor(0,1);
     lcd.print(display_line[display_line_i]);
-    display_show_line();
+    // display_show_line();
     // display_control_int();
   }else{ // No display available
     Serial.print("Water temperature: ");
