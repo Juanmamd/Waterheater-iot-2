@@ -79,19 +79,26 @@ int loop_time = 500;  					      // time to sleep earch loop, in secs
 int time_per_degree = 5; 			    // time to raise 1 degree, in secs, initial value
 int heater_autoadjust = 0;				      // weather time_per_degree is auto adjust from previous data
 int max_running_time = 4 * 60;			// 4 mins maximum running time, default = 4 hours
+
+int eeprom_pos=100;
+struct dailyprog {
+  byte weekday;  // indexed by week[]
+  byte use_time;  // time from 4 am to 23 am, 5 minutes interval.
+} ;
+dailyprog schedule[14]; // two schedules per day.
 char week[]={"DLMXJVS"};
+int num_schedules;
 
 //Internal variables
 int stop_programm = 0;					    // stop schedule running
 int heater_on=0;						          // heater status
 int sensorValue=0;  // variable to  store  the value  coming  from  the sensor
 int count=1;          // Loop count
-byte schedule[7];				            // contains usage schedule, 1 hour intervals
 float water_temp;			  // current water temperature and target temperature
 float init_temp, final_temp;			    // controls autoadjustment
 int time_to_warm;	  // time left to reach target_temp, in secs
 int time_to_sched, time_in_sched; //
-time_t date, next_schedule_ini, next_schedule_fin, t_now;      // date and time. time left for next use
+time_t date, next_schedule, next_schedule_ini, next_schedule_fin, t_now;      // date and time. time left for next use
 time_t init_time, fin_time, running_time;	// running time control
 const uint64_t pipe = 0xE8E8F0F0E1LL;
 int perform_adjust=0;
@@ -108,6 +115,24 @@ int perform_adjust=0;
 // #endif
 
 void setup() {
+  schedule[0].weekday=0;
+  schedule[0].use_time=75;  // 10:15 am.  (10-4)*12 + 15/5=75  75*5=375  375/60 = 6,25 6h 15min + 4.00 = 10,15
+  schedule[1].weekday=1;
+  schedule[1].use_time=38;   // 7:00    7-4=3 3*12=36
+  schedule[2].weekday=2;
+  schedule[2].use_time=39;   // 7:00    7-4=3 3*12=36
+  schedule[3].weekday=3;
+  schedule[3].use_time=40;   // 7:00    7-4=3 3*12=36
+  schedule[4].weekday=4;
+  schedule[4].use_time=41;   // 7:00    7-4=3 3*12=36
+  schedule[5].weekday=5;
+  schedule[5].use_time=42;   // 7:00    7-4=3 3*12=36
+  schedule[6].weekday=6;
+  schedule[6].use_time=43;   // 7:00    7-4=3 3*12=36
+  schedule[7].weekday=0;
+  schedule[7].use_time=198;  // 20:30 am.  (20-4)*12=192 + 30/5=6 198 75*5=375  375/60 = 6,25 6h 15min + 4.00 = 10,15
+  num_schedules=8;
+
   // Prototype
   pinMode(HeaterPin,OUTPUT);
   pinMode(ProgrammedLed, OUTPUT);
@@ -129,6 +154,7 @@ void setup() {
   // Prototype. Schedule from 10 seconds to 110 seconds from now.
   next_schedule_ini=now()+10;
   next_schedule_fin=next_schedule_ini+100;
+  show_schedule(schedule);
   load_schedule(schedule);
   digitalWrite(ProgrammedLed,!stop_programm);
   // sensors.begin();
@@ -149,7 +175,7 @@ void loop() {
   t_now=now();
   water_temp = get_watertemp();
   time_to_warm = ( target_temp - water_temp) * time_per_degree;		// current time to warm water at this temperature, in secs
-  //next_schedule = get_next_schedule();				// Get next time when water has to be warmed, in secs
+  next_schedule = get_next_schedule(schedule);				// Get next time when water has to be warmed, in secs
   time_to_sched=next_schedule_ini - t_now;
   if (heater_on) running_time = t_now - init_time;		// Calculate running time for displaying
   if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule_fin && !stop_programm) {
@@ -258,7 +284,22 @@ time_t get_date(){ // TODO
   // Gets date and time from external source
   };
 
-int load_schedule(byte *schedule){}; // TODO
+int load_schedule(struct dailyprog *schedule){}; // TODO
+
+int show_schedule(struct dailyprog *schedule){
+    int sch_i;
+    int hour,min;
+    for(sch_i=0;sch_i<num_schedules;sch_i++){
+      Serial.println("Schedule loop");
+      Serial.print(week[schedule[sch_i].weekday]);
+      Serial.print(" - ");
+      hour=schedule[sch_i].use_time/12 + 4;
+      min=schedule[sch_i].use_time%12 * 5;
+      Serial.print(hour);
+      Serial.print(":");
+      Serial.println(min);
+    }
+};
 
 float get_watertemp(){  //Implement according to hardware sensor
     float sensortemp;
@@ -277,11 +318,35 @@ float get_watertemp(){  //Implement according to hardware sensor
     ///
 };
 
-int get_next_schedule(){ // TODO
+int get_next_schedule(struct dailyprog *sched){ // TODO
   time_t return_time;
-  //return_time=1516595194;
- // return_time=MakeTime(t_next);
-  //return_time=(now()+10000);
+  int sch_i=0;
+  int time_found=1440; // One day minutes
+  int time1, time2, sch_found;
+
+  time2=hour(t_now)+minute(t_now);
+  while(sch_i < num_schedules){
+    if(sched[sch_i].weekday==weekday(t_now)){
+      time1=(sched[sch_i].use_time/12 + 4)*60 + sched[sch_i].use_time%12 * 5;
+      if(time1-time2<time_found){
+        time_found=time1-time2;
+        sch_found=sch_i;
+      };
+    };
+    sch_i++;
+  };
+  return_time=makeTime(sched[sch_found].use_time/12 + 4,
+                      sched[sch_found].use_time%12 * 5,
+                      0,
+                      day(t_now),
+                      month(t_now),
+                      year(t_now));
+  // return_time.Hour=sched[[sch_found].use_time/12 + 4;
+  // return_time.Minute=sched[sch_found].use_time%12 * 5;
+  // return_time.Day=t_now.Day;
+  // return_time.Month=t_now.Month;
+  // return_time.Year=t_now.Year;
+
   return return_time;
   };
 
