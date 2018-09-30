@@ -98,7 +98,7 @@ float water_temp;			  // current water temperature and target temperature
 float init_temp, final_temp;			    // controls autoadjustment
 int time_to_warm;	  // time left to reach target_temp, in secs
 int time_to_sched, time_in_sched; //
-time_t date, next_schedule, next_schedule_ini, next_schedule_fin, t_now;      // date and time. time left for next use
+time_t date, next_schedule, t_now;      // date and time. time left for next use
 time_t init_time, fin_time, running_time;	// running time control
 const uint64_t pipe = 0xE8E8F0F0E1LL;
 int perform_adjust=0;
@@ -129,7 +129,7 @@ void setup() {
   schedule[5].use_time=42;   // 7:00    7-4=3 3*12=36
   schedule[6].weekday=6;
   schedule[6].use_time=43;   // 7:00    7-4=3 3*12=36
-  schedule[7].weekday=0;
+  schedule[7].weekday=1;
   schedule[7].use_time=198;  // 20:30 am.  (20-4)*12=192 + 30/5=6 198 75*5=375  375/60 = 6,25 6h 15min + 4.00 = 10,15
   num_schedules=8;
 
@@ -152,10 +152,13 @@ void setup() {
   date = get_date(); // Ask for remote date
   set_date(date);
   // Prototype. Schedule from 10 seconds to 110 seconds from now.
-  next_schedule_ini=now()+10;
-  next_schedule_fin=next_schedule_ini+100;
-  show_schedule(schedule);
-  load_schedule(schedule);
+
+  // next_schedule_ini=now()+10;
+  // next_schedule_fin=next_schedule_ini+100;
+  show_schedules(schedule);
+  load_schedules(schedule);
+  // next_schedule = get_next_schedule(schedule);				// Get next time when water has to be warmed, in secs
+
   digitalWrite(ProgrammedLed,!stop_programm);
   // sensors.begin();
 // #ifdef LCD_DISPLAY
@@ -171,14 +174,19 @@ void setup() {
 // #endif
 };
 
-void loop() {
+void loop(){
+  // time_t mynext_schedule;
+
   t_now=now();
   water_temp = get_watertemp();
   time_to_warm = ( target_temp - water_temp) * time_per_degree;		// current time to warm water at this temperature, in secs
   next_schedule = get_next_schedule(schedule);				// Get next time when water has to be warmed, in secs
-  time_to_sched=next_schedule_ini - t_now;
+  print_time(next_schedule);
+  time_to_sched=next_schedule - t_now;
+  Serial.print("Time to sched: ");
+  Serial.println(time_to_sched);
   if (heater_on) running_time = t_now - init_time;		// Calculate running time for displaying
-  if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule_fin && !stop_programm) {
+  if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule && !stop_programm) {
     //if(debug)Serial.println("Calentando");
     if (!heater_on) {
       power_on_heater();
@@ -195,7 +203,7 @@ void loop() {
     };
   };
   // if( (count % 2) == 0)
-  display(heater_on, water_temp, target_temp, running_time, now(), next_schedule_ini);
+  display(heater_on, water_temp, target_temp, running_time, now(), next_schedule);
   // if( (count % 5) ==0 ) send_data();
   delay(loop_time);
   count++;
@@ -277,16 +285,16 @@ void stop_programm_int(){
   };
 
 int set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
-  setTime(20,55,00,23,9,2018);
+  setTime(23,00,00,30,9,2018);
   };
 
 time_t get_date(){ // TODO
   // Gets date and time from external source
   };
 
-int load_schedule(struct dailyprog *schedule){}; // TODO
+int load_schedules(struct dailyprog *schedule){}; // TODO
 
-int show_schedule(struct dailyprog *schedule){
+int show_schedules(struct dailyprog *schedule){
     int sch_i;
     int hour,min;
     for(sch_i=0;sch_i<num_schedules;sch_i++){
@@ -303,52 +311,67 @@ int show_schedule(struct dailyprog *schedule){
 
 float get_watertemp(){  //Implement according to hardware sensor
     float sensortemp;
-    // Prototype
-    // sensorValue =  analogRead(sensorPin);
-    // sensors.requestTemperatures();
-    // return sensors.getTempCByIndex(0);
-    //return sensorValue;
     sensorDS18B20.requestTemperatures();
     sensortemp=sensorDS18B20.getTempCByIndex(0);
     Serial.println("");
     Serial.println(sensortemp);
     Serial.println("");
     return sensortemp;
-    // return 28;
-    ///
 };
 
-int get_next_schedule(struct dailyprog *sched){ // TODO
+time_t get_next_schedule(struct dailyprog *sched){ // TODO
   time_t return_time;
+  tmElements_t timeElements;
+  int target_weekday=weekday(t_now);
   int sch_i=0;
   int time_found=1440; // One day minutes
   int time1, time2, sch_found;
+  boolean next_found=false;
 
   time2=hour(t_now)+minute(t_now);
-  while(sch_i < num_schedules){
-    if(sched[sch_i].weekday==weekday(t_now)){
-      time1=(sched[sch_i].use_time/12 + 4)*60 + sched[sch_i].use_time%12 * 5;
-      if(time1-time2<time_found){
-        time_found=time1-time2;
-        sch_found=sch_i;
+  while(!next_found){
+    while(sch_i < num_schedules){
+      Serial.print("Searching next schedule: ");
+      Serial.println(sch_i);
+      if(sched[sch_i].weekday==target_weekday){
+        time1=(sched[sch_i].use_time/12 + 4)*60 + sched[sch_i].use_time%12 * 5;
+        Serial.print("Weekday found: ");
+        Serial.print(time1);
+        Serial.print(" / ");
+        Serial.println(time2);
+        if(time1-time2<time_found){
+          time_found=time1-time2;
+          sch_found=sch_i;
+          Serial.print("Sched found: ");
+          Serial.println(sch_i);
+        };
       };
+      sch_i++;
     };
-    sch_i++;
+    target_weekday++;
+    if(target_weekday>6)target_weekday=0;
   };
-  return_time=makeTime(sched[sch_found].use_time/12 + 4,
-                      sched[sch_found].use_time%12 * 5,
-                      0,
-                      day(t_now),
-                      month(t_now),
-                      year(t_now));
-  // return_time.Hour=sched[[sch_found].use_time/12 + 4;
-  // return_time.Minute=sched[sch_found].use_time%12 * 5;
-  // return_time.Day=t_now.Day;
-  // return_time.Month=t_now.Month;
-  // return_time.Year=t_now.Year;
-
+  timeElements={0,sched[sch_found].use_time%12 * 5, sched[sch_found].use_time/12 + 4,
+                  weekday(t_now),day(t_now),month(t_now),year(t_now)-1970};
+  return_time=makeTime(timeElements);
+  Serial.println("Next schedule");
+  print_time(return_time);
   return return_time;
   };
+
+void print_time(time_t sched){
+  Serial.print(day(sched));
+  Serial.print("/");
+  Serial.print(month(sched));
+  Serial.print("/");
+  Serial.print(year(sched));
+  Serial.print(" ");
+  Serial.print(hour(sched));
+  Serial.print(":");
+  Serial.print(minute(sched));
+  Serial.print(":");
+  Serial.println(second(sched));
+};
 
 int power_on_heater(){ // TODO Implement relay control
   Serial.println("Encendiendo calentador");
