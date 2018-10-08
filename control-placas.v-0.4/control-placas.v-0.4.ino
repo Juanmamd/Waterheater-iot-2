@@ -281,7 +281,7 @@ void stop_programm_int(){
   };
 
 int set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
-  setTime(23,50,00,1,10 ,2018);
+  setTime(7,12,00,8,10 ,2018);
   };
 
 time_t get_date(){ // TODO
