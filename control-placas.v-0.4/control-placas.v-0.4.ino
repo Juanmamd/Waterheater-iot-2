@@ -195,7 +195,7 @@ void loop(){
   display(heater_on, water_temp, target_temp, running_time, now(), next_schedule);
   // if( (count % 5) ==0 ) send_data();
   delay(loop_time);
-  if(count % 5 == 0)display_show_line();
+  // if(count % 5 == 0)display_show_line();
   count++;
   //if(debug) Serial.println(count);
 };
@@ -208,8 +208,8 @@ int time_to_minutes(time_t inputtime){
 
 void display_show_line(){
   display_line_i++;
-  // Serial.print("Displaying line ");
-  // Serial.println(display_line_i);
+  Serial.print("Displaying line ");
+  Serial.println(display_line_i);
   if(display_line_i>NUM_DISPLAYS)display_line_i=1;
   delay(50);
 };
@@ -276,7 +276,7 @@ void stop_programm_int(){
     stop_programm=!stop_programm;
     digitalWrite(ProgrammedLed,!stop_programm);
     Serial.println("Stop BUTTON Pressed");
-	delay(50);
+	delay(100);
     // if(LCD_DISPLAY) lcd.clear();
   };
 
