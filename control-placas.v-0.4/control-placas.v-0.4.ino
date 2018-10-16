@@ -43,7 +43,7 @@
 #include <max6675.h>
 #include <avr/pgmspace.h>
 
-#define I2C_ADDR    0x3F    // 0x27 in PCF8574 by NXP and Set to 0x3F in PCF8574A
+#define LCD_I2C_ADDR    0x3F    // 0x27 in PCF8574 by NXP and Set to 0x3F in PCF8574A
 
 #include <SPI.h>
 #include "RF24.h"
@@ -104,16 +104,13 @@ time_t init_time, fin_time, running_time;	// running time control
 const uint64_t pipe PROGMEM = 0xE8E8F0F0E1LL;
 int perform_adjust=0;
 
-// #ifdef LCD_DISPLAY
-  LiquidCrystal_I2C lcd(I2C_ADDR, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
-  byte char_ON[] = {  B11111,  B10001,  B10101,  B10101,  B10101,  B10101,  B10001,  B11111  };
-  byte char_OFF[] = {  B11111,  B10001,  B10001,  B10001,  B10001,  B10001,  B10001,  B11111  };
-  const int NUM_DISPLAYS PROGMEM =3; // Num of rotating screens
-  char display_line[4][17]; // LCD lines size
-  int display_line_i=1;
-  int display_active=1;
-
-// #endif
+LiquidCrystal_I2C lcd(LCD_I2C_ADDR, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+byte char_ON[] = {  B11111,  B10001,  B10101,  B10101,  B10101,  B10101,  B10001,  B11111  };
+byte char_OFF[] = {  B11111,  B10001,  B10001,  B10001,  B10001,  B10001,  B10001,  B11111  };
+const int NUM_DISPLAYS PROGMEM =3; // Num of rotating screens
+char display_line[4][17]; // LCD lines size
+int display_line_i=1;
+int display_active=1;
 
 void setup() {
   schedule[0].weekday=1;
