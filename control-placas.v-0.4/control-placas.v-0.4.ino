@@ -1,11 +1,15 @@
 // TO DO
 // serial commands
+// RF commands
 // Low power consumption: LCD, RF, Arduino
-// avoid consecutives on-off-on
 // send RF data: lines + running send_data
-// button debouncing
-// display on/off button
-// save/restore schedules from eeprom
+    // uptime
+    // water_temp
+    // inside_temp
+    // heater status
+    // next schedule
+    // Text [16]
+// save/restore schedules and variables from eeprom
 
 // Project pinout
 // D2	- Stop program button
@@ -24,8 +28,8 @@
 // A1	- Not used
 // A2	- Not used
 // A3	- Not used
-// A4	- I2C SDA LED
-// A5	- I2C SCL LED
+// A4	- I2C SDA LED + RTC
+// A5	- I2C SCL LED + RTC 
 // A6	- Not used
 // A7	- Not used
 
@@ -40,16 +44,17 @@
 #include <Time.h>
 #include <TimeLib.h>
 #include <Wire.h>
-#include <max6675.h>
+// #include <max6675.h>
 #include <avr/pgmspace.h>
 
-#define LCD_I2C_ADDR    0x3F    // 0x27 in PCF8574 by NXP and Set to 0x3F in PCF8574A
 
 #include <SPI.h>
 #include "RF24.h"
+RF24 radio(9,10);
+
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
-RF24 radio(9,10);
+#define LCD_I2C_ADDR    0x3F    // 0x27 in PCF8574 by NXP and Set to 0x3F in PCF8574A
 
 #include <OneWire.h>              // For DS18B20
 #include <DallasTemperature.h>    // For DS18B20
@@ -61,7 +66,8 @@ OneWire oneWireObjeto(pinDatosDQ);
 DallasTemperature sensorDS18B20(&oneWireObjeto);
 
 //User controlled variables
-const float target_temp PROGMEM =32;
+const float target_temp PROGMEM =32;  //Desired Temperature
+const float hister_temp PROGMEM =2;   //histeresis
 // float target_temp = 35;
 
 // hardware variables
@@ -76,10 +82,12 @@ const int ProgrammedLed PROGMEM=4;
 int debug=0;
 int loop_time = 100;  					     // time to sleep earch loop, in secs
 int time_per_degree = 60; 			     // time to raise 1 degree, in secs, initial value
-int heater_autoadjust = 0;				   // weather time_per_degree is auto adjust from previous data
-int max_running_time = 4 * 60;			 // 4 mins maximum running time, default = 4 hours
+int heater_autoadjust = 1;				   // weather time_per_degree is auto adjust from previous data
+int max_running_time = 3 * 60 *60 ;			 // maximum running time
 
-const int eeprom_pos PROGMEM =100;     // pos 98    1=saved   0=not saved
+const int eeprom_pos PROGMEM =100;
+                        // pos 97   time per degree
+                        // pos 98    111=saved   0=not saved
                         // pos 99    num_schedules
                         // pos 100   begin saved schedules
 struct dailyprog {
@@ -99,7 +107,7 @@ float water_temp;			  // current water temperature and target temperature
 float init_temp, final_temp;			    // controls autoadjustment
 int time_to_warm;	  // time left to reach target_temp, in secs
 int time_to_sched, time_in_sched; //
-time_t date, next_schedule, t_now;      // date and time. time left for next use
+time_t date, next_schedule, t_now, boot_time;      // date and time. time left for next use
 time_t init_time, fin_time, running_time;	// running time control
 const uint64_t pipe PROGMEM = 0xE8E8F0F0E1LL;
 int perform_adjust=0;
@@ -111,6 +119,9 @@ const int NUM_DISPLAYS PROGMEM =3; // Num of rotating screens
 char display_line[4][17]; // LCD lines size
 int display_line_i=1;
 int display_active=1;
+long int uptime=0;
+int debouncing=300; // min time between button Pressed
+time_t last_interrupt=0;
 
 void setup() {
   schedule[0].weekday=1;
@@ -157,6 +168,7 @@ void setup() {
   lcd.setCursor(0,0);
   lcd.print(F("Water heater IoT"));
   delay(1000);
+  boot_time=now();
 };
 
 void loop(){
@@ -167,6 +179,7 @@ void loop(){
  // if(digitalRead(displayLine) == HIGH) display_show_line();
 
   t_now=now();
+  uptime=t_now-boot_time;
   water_temp = get_watertemp();
   time_to_warm = ( target_temp - water_temp) * time_per_degree;		// current time to warm water at this temperature, in secs
   next_schedule = get_next_schedule(schedule);				// Get next time when water has to be warmed, in secs
@@ -184,15 +197,16 @@ void loop(){
     Serial.println(F("Calentando"));
     if (!heater_on) {
       power_on_heater();
-      init_time = now();
+      init_time = t_now;
       init_temp = water_temp;
     };
-  } else {  // Out of heating period of time
+  } else if(water_temp < (target_temp - hister_temp)) {  // histeresis control
     if(debug)Serial.println(F("En espera"));
     if (heater_on) {
       power_off_heater();
       final_temp = water_temp;
       if (perform_adjust) time_per_degree = running_time / (final_temp - init_temp); // auto-adjust time per degree
+      // Save time_per_degre on eeprom
       log_session(); // Send this sesion over RF24
     };
   };
@@ -208,33 +222,36 @@ int time_to_minutes(time_t inputtime){
 };
 
 void display_show_line(){
-  display_line_i++;
-  if(display_line_i>NUM_DISPLAYS)display_line_i=1;
-  Serial.print(F("Displaying line "));
-  Serial.println(display_line_i);
-  delay(200);
+  if(last_interrupt+debouncing < t_now){
+    display_line_i++;
+    if(display_line_i>NUM_DISPLAYS)display_line_i=1;
+    Serial.print(F("Displaying line "));
+    Serial.println(display_line_i);
+    // delay(200);
+    last_interrupt=t_now;
+  };
 };
 
-void display_control_int(){
-  display_active++;
-  if(display_active>2)display_active=0;
-  Serial.println(F("Display buttons pressed: "));
-  Serial.println(display_active);
-  switch(display_active){
-    case 0:
-      lcd.noDisplay();
-      ;
-    case 1:
-      lcd.display();
-      lcd.noBacklight();
-      ;
-    case 2:
-      lcd.display();
-      lcd.backlight();
-      ;
-  };
-  delay(50);
-};
+// void display_control_int(){
+//   display_active++;
+//   if(display_active>2)display_active=0;
+//   Serial.println(F("Display buttons pressed: "));
+//   Serial.println(display_active);
+//   switch(display_active){
+//     case 0:
+//       lcd.noDisplay();
+//       ;
+//     case 1:
+//       lcd.display();
+//       lcd.noBacklight();
+//       ;
+//     case 2:
+//       lcd.display();
+//       lcd.backlight();
+//       ;
+//   };
+//   delay(50);
+// };
 
 int send_data(){
   radio.stopListening();
@@ -273,13 +290,13 @@ int send_data(){
 };
 
 void stop_programm_int(){
-	// lcd.clear();
+  if(last_interrupt+debouncing < t_now){
     stop_programm=!stop_programm;
     digitalWrite(ProgrammedLed,!stop_programm);
     Serial.println(F("Stop BUTTON Pressed"));
-	delay(200);
-    // if(LCD_DISPLAY) lcd.clear();
+    last_interrupt=t_now;
   };
+};
 
 int set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
   setTime(23,05,00,15,10 ,2018);
