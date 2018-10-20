@@ -76,6 +76,8 @@ void setup(void)
 		// Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
 		// rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
 	}
+  // rtc.adjust(DateTime(2018, 10, 20, 22, 13, 0));
+	rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   lcd.begin(16,2,LCD_5x8DOTS);
   lcd.clear();
   lcd.setCursor(0,0);
@@ -94,6 +96,8 @@ void loop(void)
    lcd.setCursor(0,0);
    lcd.print(display_line);
    Serial.println(display_line);
+   Serial.print(F("Unix time: "));
+   Serial.println(dt.unixtime());
    // Serial.println(__DATE__);
    // Serial.println(__TIME__);
    // Serial.println(today);

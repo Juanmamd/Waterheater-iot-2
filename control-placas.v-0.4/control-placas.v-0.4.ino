@@ -29,7 +29,7 @@
 // A2	- Not used
 // A3	- Not used
 // A4	- I2C SDA LED + RTC
-// A5	- I2C SCL LED + RTC 
+// A5	- I2C SCL LED + RTC
 // A6	- Not used
 // A7	- Not used
 
@@ -44,6 +44,8 @@
 #include <Time.h>
 #include <TimeLib.h>
 #include <Wire.h>
+#include "RTClib.h"
+
 // #include <max6675.h>
 #include <avr/pgmspace.h>
 
@@ -79,9 +81,11 @@ const byte displayLine PROGMEM=3;       // scroll display lines
 const int ProgrammedLed PROGMEM=4;
 
 //System variables
-int debug=0;
+int debug=1;
+
+
 int loop_time = 100;  					     // time to sleep earch loop, in secs
-int time_per_degree = 60; 			     // time to raise 1 degree, in secs, initial value
+int time_per_degree = 300; 			     // time to raise 1 degree, in secs, initial value
 int heater_autoadjust = 1;				   // weather time_per_degree is auto adjust from previous data
 int max_running_time = 3 * 60 *60 ;			 // maximum running time
 
@@ -123,7 +127,14 @@ long int uptime=0;
 int debouncing=300; // min time between button Pressed
 time_t last_interrupt=0;
 
+RTC_DS3231 rtc;
+DateTime dt;
+tmElements_t timeElements;
+
+
 void setup() {
+  Serial.begin(115200);
+
   schedule[0].weekday=1;
   schedule[0].use_time=75;  // 10:15 am.  (10-4)*12 + 15/5=75  75*5=375  375/60 = 6,25 6h 15min + 4.00 = 10,15
   schedule[1].weekday=1;
@@ -148,16 +159,16 @@ void setup() {
   // pinMode(displayPin,INPUT);
   // attachInterrupt(digitalPinToInterrupt(displayPin),display_control_int, RISING);
   attachInterrupt(digitalPinToInterrupt(stop_button),stop_programm_int, RISING); // Stop programm interrupt
-  attachInterrupt(digitalPinToInterrupt(displayLine),display_show_line,RISING);
-  Serial.begin(115200);
+  attachInterrupt(digitalPinToInterrupt(displayLine),display_show_line, RISING);
+
   radio.begin();
   radio.setPALevel(RF24_PA_LOW);
   radio.openWritingPipe(pipe);
   radio.openReadingPipe(1,pipe);
   sensorDS18B20.begin();
-  date = get_date(); // Ask for remote date
-  set_date(date);
-  // show_schedules(schedule);
+  // date = get_date(); // Ask for remote date
+  // set_date(date);
+  show_schedules(schedule);
   load_schedules(schedule);
 
   digitalWrite(ProgrammedLed,!stop_programm);
@@ -167,8 +178,53 @@ void setup() {
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print(F("Water heater IoT"));
-  delay(1000);
-  boot_time=now();
+  delay(500);
+  if (!rtc.begin()) {
+    // if (! rtc.isrunning()) {
+    //   Serial.println("RTC is NOT running");
+    // };
+   Serial.println(F("Couldn't find RTC"));
+   while (1);
+  }
+  // Si se ha perdido la corriente, fijar fecha y hora
+  if (rtc.lostPower()) {
+    // Fijar a fecha y hora de compilacion
+    Serial.println(F("Fijando la fecha de compilacion: "));
+    // Serial.print(__DATE__);
+    // Serial.print(" / ");
+    // Serial.println(__TIME__);
+    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+
+    // Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
+    // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
+  }
+
+  dt=rtc.now();
+
+  char display_line_t [17];
+
+  sprintf(display_line_t, "%02d/%02d   %02d:%02d:%02d",dt.day(),dt.month(),dt.hour(),dt.minute(),dt.second());
+  lcd.setCursor(0,0);
+  Serial.println(F("------------------------"));
+  lcd.print(display_line_t);
+  Serial.print(F("RTC time: "));
+  Serial.println(display_line_t);
+  Serial.print(F("Unix time: "));
+  Serial.println(dt.unixtime());
+  Serial.print(F("Seconds time: "));
+  Serial.println(dt.secondstime());
+  Serial.println(F("------------------------"));
+
+  timeElements={dt.second(),dt.minute(), dt.hour(),
+                  dt.dayOfTheWeek(),dt.day(),dt.month(),dt.year()};
+  boot_time=makeTime(timeElements);
+  // boot_time=dt.unixtime();
+  Serial.print(F("Boot time: "));
+  print_time(boot_time);
+  Serial.println();
+  print_time(now());
+  Serial.println();
+  delay(2000);
 };
 
 void loop(){
@@ -178,17 +234,22 @@ void loop(){
  // if(digitalRead(displayPin) == HIGH) display_control_int();
  // if(digitalRead(displayLine) == HIGH) display_show_line();
 
-  t_now=now();
+  dt=rtc.now();
+  t_now=dt.unixtime();
   uptime=t_now-boot_time;
   water_temp = get_watertemp();
   time_to_warm = ( target_temp - water_temp) * time_per_degree;		// current time to warm water at this temperature, in secs
   next_schedule = get_next_schedule(schedule);				// Get next time when water has to be warmed, in secs
   time_to_sched=next_schedule - t_now;
   if(debug){
-    Serial.println(F("Next:"));
+    Serial.print(F("Uptime: "));
+    Serial.println(uptime);
+    Serial.print(F("Next:"));
     print_time(next_schedule);
-    Serial.println(F("Now:"));
+    Serial.println();
+    Serial.print(F("Now:"));
     print_time(t_now);
+    Serial.println();
     Serial.print(F("Time to sched: "));
     Serial.println(time_to_minutes(time_to_sched));
   };
@@ -210,7 +271,7 @@ void loop(){
       log_session(); // Send this sesion over RF24
     };
   };
-  display(heater_on, water_temp, target_temp, running_time, now(), next_schedule);
+  display(heater_on, water_temp, target_temp, running_time, t_now, next_schedule);
   delay(loop_time);
   count++;
 };
@@ -222,14 +283,18 @@ int time_to_minutes(time_t inputtime){
 };
 
 void display_show_line(){
-  if(last_interrupt+debouncing < t_now){
+  // if(last_interrupt+debouncing < t_now){
     display_line_i++;
     if(display_line_i>NUM_DISPLAYS)display_line_i=1;
     Serial.print(F("Displaying line "));
     Serial.println(display_line_i);
     // delay(200);
     last_interrupt=t_now;
-  };
+    if(debug){
+      Serial.print("Last interrupt: ");
+      Serial.println(last_interrupt);
+    }
+  // };
 };
 
 // void display_control_int(){
@@ -290,16 +355,16 @@ int send_data(){
 };
 
 void stop_programm_int(){
-  if(last_interrupt+debouncing < t_now){
+  // if(last_interrupt+debouncing < t_now){
     stop_programm=!stop_programm;
     digitalWrite(ProgrammedLed,!stop_programm);
     Serial.println(F("Stop BUTTON Pressed"));
     last_interrupt=t_now;
-  };
+  // };
 };
 
 int set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
-  setTime(23,05,00,15,10 ,2018);
+  setTime(20,8,00,20,10 ,2018);
   };
 
 time_t get_date(){ // TODO
@@ -337,7 +402,6 @@ float get_watertemp(){  //Implement according to hardware sensor
 
 time_t get_next_schedule(struct dailyprog *sched){ // TODO
   time_t return_time;
-  tmElements_t timeElements;
   int target_weekday=weekday(t_now);
   int sch_i=0;
   int time_found=14400; // Ten days in minutes
@@ -361,6 +425,11 @@ time_t get_next_schedule(struct dailyprog *sched){ // TODO
   };
 
 void print_time(time_t sched){
+  if(debug){
+    Serial.print(F("print_time: "));
+    Serial.print(sched);
+    Serial.println();
+  }
   if(year(sched)>1970){
     Serial.print(day(sched));
     Serial.print(F("/"));
@@ -373,7 +442,7 @@ void print_time(time_t sched){
   Serial.print(F(":"));
   Serial.print(minute(sched));
   Serial.print(F(":"));
-  Serial.println(second(sched));
+  Serial.print(second(sched));
 };
 
 int power_on_heater(){ // TODO Implement relay control
