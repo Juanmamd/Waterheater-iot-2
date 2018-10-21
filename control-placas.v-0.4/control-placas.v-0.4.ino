@@ -183,8 +183,9 @@ void setup() {
     // Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
     // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
   }
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   dt=rtc.now();
+  print_time(dt);
 
   char display_line_t [17];
 
@@ -498,6 +499,21 @@ void print_time(time_t sched){
   Serial.print(second(sched));
 };
 
+void print_time(DateTime dt){
+if(debug)Serial.println(F("print_time DateTime"));
+Serial.print(dt.day());
+Serial.print(F("/"));
+Serial.print(dt.month());
+Serial.print(F("/"));
+Serial.print(dt.year());
+Serial.print(F(" "));
+Serial.print(dt.hour());
+Serial.print(F(":"));
+Serial.print(dt.minute());
+Serial.print(F(":"));
+Serial.print(dt.second());
+};
+
 void power_on_heater(){ // TODO Implement relay control
   Serial.println(F("Encendiendo calentador"));
   heater_on=1;
@@ -512,28 +528,28 @@ void power_off_heater(){ // TODO Implement relay control
 
 int log_session(){}; // TODO
 
-void display(byte h_status, float temp1, float temp2, int r_time, time_t today, time_t next){
+void display(float temp1, float temp2, int r_time, time_t today, time_t next, DateTime dt){
   char buff1[5], buff2[5];
   dtostrf(temp1,2,2,buff1);
   dtostrf(temp2,2,2,buff2);
   sprintf(display_line [0], "%02d/%02d    %02d:%02d  ",day(today),month(today),hour(today),minute(today));
   sprintf(display_line [1], "T: %s->%s", buff1, buff2);
   sprintf(display_line [2], "%02d/%02d    %02d:%02d  ",day(next),month(next),hour(next),minute(next));
-  sprintf(display_line [3], "Linea 3         ");
+  sprintf(display_line [3], "%02d/%02d -- %02d:%02d  ",dt.day(), dt.month(), dt.hour(), dt.minute());
   if(display_active){ // Display Active
     lcd.setCursor(0,0);
     lcd.print(display_line[0]);
     lcd.setCursor(0,1);
     lcd.print(display_line[display_line_i]);
     lcd.setCursor(15,0);
-    lcd.write(h_status);
+    lcd.write(heater_on);
   }else{ // No display available
     Serial.print(F("Water temperature: "));
     Serial.println(temp1,DEC);
     Serial.print(F("Target temperature: "));
     Serial.println(temp2);
     Serial.print(F("Heater is: "));
-    if(h_status)Serial.println(F("ON")); else Serial.println(F("OFF"));
+    if(heater_on)Serial.println(F("ON")); else Serial.println(F("OFF"));
     Serial.print(F("Running time: "));
     Serial.println(r_time);
     Serial.print(F("Date/Time: "));
@@ -547,7 +563,7 @@ void display(byte h_status, float temp1, float temp2, int r_time, time_t today, 
     Serial.print(F("Target temperature: "));
     Serial.println(temp2);
     Serial.print(F("Heater is: "));
-    if(h_status)Serial.println(F("ON")); else Serial.println(F("OFF"));
+    if(heater_on)Serial.println(F("ON")); else Serial.println(F("OFF"));
     Serial.print(F("Running time: "));
     Serial.println(r_time);
     Serial.print(F("Date/Time: "));
