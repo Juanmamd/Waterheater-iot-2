@@ -44,12 +44,11 @@
 #include <Time.h>
 #include <TimeLib.h>
 #include <Wire.h>
-#include <RTClib.h>
+#include "RTClib.h"
 
 // #include <max6675.h>
 #include <avr/pgmspace.h>
 #include <EEPROM.h>
-
 
 #include <SPI.h>
 #include "RF24.h"
@@ -113,8 +112,10 @@ float water_temp;			  // current water temperature and target temperature
 float init_temp, final_temp;			    // controls autoadjustment
 int time_to_warm;	  // time left to reach target_temp, in secs
 int time_to_sched, time_in_sched; //
-time_t date, next_schedule, t_now, boot_time;      // date and time. time left for next use
+time_t t_now; //, boot_time;      // date and time. time left for next use
+DateTime next_schedule;
 time_t init_time, fin_time, running_time;	// running time control
+DateTime boot_time;
 const uint64_t pipe PROGMEM = 0xE8E8F0F0E1LL;
 byte perform_adjust=0;
 
@@ -125,11 +126,13 @@ const byte NUM_DISPLAYS PROGMEM =3; // Num of rotating screens
 char display_line[4][17]; // LCD lines size
 byte display_line_i=1;
 byte display_active=1;
-long int uptime=0;
+// long int uptime=0;
+long int uptime;
 int debouncing=300; // min time between button Pressed
 time_t last_interrupt=0;
 
 RTC_DS3231 rtc;
+// RTC_DS3231 rtc;
 DateTime dt;
 tmElements_t timeElements;
 
@@ -153,63 +156,72 @@ void setup() {
   radio.openWritingPipe(pipe);
   radio.openReadingPipe(1,pipe);
   sensorDS18B20.begin();
+  // if(!sensorDS18B20.isConnected()){
+  //   Serial.println(F("Error iniciando sonda de temperatura"));
+  //   while(1);
+  // }
   // date = get_date(); // Ask for remote date
   // set_date(date);
 
+// Initialize programm led
   digitalWrite(ProgrammedLed,!stop_programm);
+
   lcd.begin(16,2,LCD_5x8DOTS);
   lcd.createChar(0, char_OFF);
   lcd.createChar(1, char_ON);
   lcd.clear();
   lcd.setCursor(0,0);
   lcd.print(F("Water heater IoT"));
-  delay(500);
-  if (!rtc.begin()) {
+
+    if (!rtc.begin()) {
     // if (! rtc.isrunning()) {
     //   Serial.println("RTC is NOT running");
     // };
-   Serial.println(F("Couldn't find RTC"));
-   while (1);
-  }
+      Serial.println(F("Couldn't find RTC"));
+      while (1);
+    }
   // Si se ha perdido la corriente, fijar fecha y hora
-  if (rtc.lostPower()) {
-    // Fijar a fecha y hora de compilacion
-    Serial.println(F("Fijando la fecha de compilacion: "));
-    // Serial.print(__DATE__);
-    // Serial.print(" / ");
-    // Serial.println(__TIME__);
-    rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
-    // Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
-    // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
-  }
+  // if (rtc.lostPower()) {
+  //   // Fijar a fecha y hora de compilacion
+  //   Serial.println(F("Fijando la fecha de compilacion: "));
+  //   // Serial.print(__DATE__);
+  //   // Serial.print(" / ");
+  //   // Serial.println(__TIME__);
+  //   rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  //
+  //   // Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
+  //   // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
+  // }
   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   dt=rtc.now();
-  print_time(dt);
+  boot_time=dt;
+  if(debug)print_time(dt);
 
   char display_line_t [17];
 
-  sprintf(display_line_t, "%02d/%02d   %02d:%02d:%02d",dt.day(),dt.month(),dt.hour(),dt.minute(),dt.second());
-  lcd.setCursor(0,0);
-  Serial.println(F("------------------------"));
-  lcd.print(display_line_t);
-  Serial.print(F("RTC time: "));
-  Serial.println(display_line_t);
-  Serial.print(F("Unix time: "));
-  Serial.println(dt.unixtime());
-  Serial.print(F("Seconds time: "));
-  Serial.println(dt.secondstime());
-  Serial.println(F("------------------------"));
+  if(debug){
+    sprintf(display_line_t, "%02d/%02d   %02d:%02d:%02d",dt.day(),dt.month(),dt.hour(),dt.minute(),dt.second());
+    lcd.setCursor(0,0);
+    lcd.print(display_line_t);
+    Serial.println(F("------------------------"));
+    Serial.print(F("RTC time: "));
+    Serial.println(display_line_t);
+    Serial.print(F("Unix time: "));
+    Serial.println(t_now);
+    Serial.print(F("Seconds time: "));
+    Serial.println(dt.secondstime());
+    Serial.println(F("------------------------"));
+    Serial.print(F("Boot time: "));
+    print_time(boot_time);
+    Serial.println();
+  }
 
-  timeElements={dt.second(),dt.minute(), dt.hour(),
-                  dt.dayOfTheWeek(),dt.day(),dt.month(),dt.year()};
-  boot_time=makeTime(timeElements);
+  // timeElements={dt.second(),dt.minute(), dt.hour(),
+                  // dt.dayOfTheWeek(),dt.day(),dt.month(),dt.year()};
+  // boot_time=makeTime(timeElements);
   // boot_time=dt.unixtime();
-  Serial.print(F("Boot time: "));
-  print_time(boot_time);
-  Serial.println();
-  print_time(now());
-  Serial.println();
+  // print_time(now());
+  // Serial.println();
   delay(2000);
 };
 
@@ -222,25 +234,28 @@ void loop(){
 
   dt=rtc.now();
   t_now=dt.unixtime();
-  uptime=t_now-boot_time;
+  uptime= t_now - boot_time.unixtime();
   water_temp = get_watertemp();
   time_to_warm = ( target_temp - water_temp) * time_per_degree;		// current time to warm water at this temperature, in secs
   next_schedule = get_next_schedule(schedule);				// Get next time when water has to be warmed, in secs
-  time_to_sched=next_schedule - t_now;
+  time_to_sched=next_schedule.unixtime() - t_now;
+  // time_to_sched=next_schedule - t_now;
   if(debug){
     Serial.print(F("Uptime: "));
-    Serial.println(uptime);
+    // Serial.println(uptime);
+    print_time(uptime);
     Serial.print(F("Next:"));
     print_time(next_schedule);
     Serial.println();
     Serial.print(F("Now:"));
     print_time(t_now);
     Serial.println();
-    Serial.print(F("Time to sched: "));
-    Serial.println(time_to_minutes(time_to_sched));
+    Serial.println(F("Time to sched: "));
+    // Serial.println(time_to_minutes(time_to_sched));
   };
   if (heater_on) running_time = t_now - init_time;		// Calculate running time for displaying
-  if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule && !stop_programm) {
+  // if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule && !stop_programm) {
+  if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule.unixtime() && !stop_programm) {
     Serial.println(F("Calentando"));
     if (!heater_on) {
       power_on_heater();
@@ -257,7 +272,7 @@ void loop(){
       log_session(); // Send this sesion over RF24
     };
   };
-  display(heater_on, water_temp, target_temp, running_time, t_now, next_schedule);
+  display(water_temp, target_temp, running_time, dt, next_schedule);
   delay(loop_time);
   count++;
 };
@@ -419,13 +434,13 @@ void stop_programm_int(){
   // };
 };
 
-void set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
-  setTime(20,8,00,20,10 ,2018);
-  };
-
-time_t get_date(){ // TODO
-  // Gets date and time from external source
-  };
+// void set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
+//   setTime(20,8,00,20,10 ,2018);
+//   };
+//
+// time_t get_date(){ // TODO
+//   // Gets date and time from external source
+//   };
 
 void show_schedules(struct dailyprog *schedule){
     int sch_i;
@@ -454,15 +469,19 @@ float get_watertemp(){  //Implement according to hardware sensor
     return sensortemp;
 };
 
-time_t get_next_schedule(struct dailyprog *sched){ // TODO
-  time_t return_time;
-  int target_weekday=weekday(t_now);
+// time_t get_next_schedule(struct dailyprog *sched){ // TODO
+DateTime get_next_schedule(struct dailyprog *sched){ // TODO
+  // time_t return_time;
+  DateTime return_time;
+  // int target_weekday=weekday(t_now);
+  int target_weekday=dt.dayOfTheWeek();
   int sch_i=0;
   int time_found=14400; // Ten days in minutes
   int time1, time2, sch_found;
   boolean next_found=false;
 
-  time1=weekday(t_now)*1440 + hour(t_now)*60 + minute(t_now);  // Now in minutes since past sunday
+  // time1=weekday(t_now)*1440 + hour(t_now)*60 + minute(t_now);  // Now in minutes since past sunday
+  time1=dt.dayOfTheWeek()*1440 + dt.hour()*60 + dt.minute();  // Now in minutes since past sunday
   while(sch_i < num_schedules){
       time2=sched[sch_i].weekday*1440 + (sched[sch_i].use_time/12 + 4)*60 + sched[sch_i].use_time%12 * 5;
       if(time2-time1<time_found && time2-time1>0){  // search for minimum difference (next schedule)
@@ -471,10 +490,24 @@ time_t get_next_schedule(struct dailyprog *sched){ // TODO
       };
     sch_i++;
   };
-  timeElements={0,sched[sch_found].use_time%12 * 5, sched[sch_found].use_time/12 + 4,
-                  sched[sch_found].weekday,day(t_now)+(sched[sch_found].weekday-weekday(t_now)),
-                  month(t_now),year(t_now)-1970};
-  return_time=makeTime(timeElements);
+  // timeElements={0,sched[sch_found].use_time%12 * 5, sched[sch_found].use_time/12 + 4,
+  //                 sched[sch_found].weekday,day(t_now)+(sched[sch_found].weekday-weekday(t_now)),
+  //                 month(t_now),year(t_now)-1970};
+  return_time={dt.year(),dt.month(),
+    dt.day()+sched[sch_found].weekday-dt.dayOfTheWeek(),
+    sched[sch_found].use_time/12 + 4,
+    sched[sch_found].use_time%12 * 5, 0};
+  // return_time.setyear(dt.year());
+  // return_time.setmonth(dt.month());
+  // return_time.setday(dt.day()+sched[sch_found].weekday-dt.dayOfTheWeek());
+  // return_time.sethour(sched[sch_found].use_time/12 + 4);
+  // return_time.setminute(sched[sch_found].use_time%12 * 5);
+  // return_time.setsecond(0);
+  // return_time=makeTime(timeElements);
+  // timeElements={0,sched[sch_found].use_time%12 * 5, sched[sch_found].use_time/12 + 4,
+  //                 sched[sch_found].weekday,day(t_now)+(sched[sch_found].weekday-weekday(t_now)),
+  //                 month(t_now),year(t_now)-1970};
+  // return_time=makeTime(timeElements);
   return return_time;
   };
 
@@ -528,14 +561,18 @@ void power_off_heater(){ // TODO Implement relay control
 
 int log_session(){}; // TODO
 
-void display(float temp1, float temp2, int r_time, time_t today, time_t next, DateTime dt){
+void display(float temp1, float temp2, long int r_time, DateTime today, DateTime next){
   char buff1[5], buff2[5];
   dtostrf(temp1,2,2,buff1);
   dtostrf(temp2,2,2,buff2);
-  sprintf(display_line [0], "%02d/%02d    %02d:%02d  ",day(today),month(today),hour(today),minute(today));
-  sprintf(display_line [1], "T: %s->%s", buff1, buff2);
-  sprintf(display_line [2], "%02d/%02d    %02d:%02d  ",day(next),month(next),hour(next),minute(next));
-  sprintf(display_line [3], "%02d/%02d -- %02d:%02d  ",dt.day(), dt.month(), dt.hour(), dt.minute());
+  // sprintf(display_line [0], "%02d/%02d    %02d:%02d  ",day(today),month(today),hour(today),minute(today));
+  // sprintf(display_line [1], "T: %s->%s", buff1, buff2);
+  // sprintf(display_line [2], "%02d/%02d    %02d:%02d  ",day(next),month(next),hour(next),minute(next));
+  sprintf(display_line [0], "%02d/%02d    %02d:%02d  ",today.day(),today.month(),today.hour(),today.minute());
+  sprintf(display_line [1], "T: %s->%s", buff1, buff1);
+  sprintf(display_line [2], "%02d/%02d    %02d:%02d  ",next.day(),next.month(),next.hour(),next.minute());
+  // sprintf(display_line [3], "%02d/%02d -- %02d:%02d  ",dt.day(), dt.month(), dt.hour(), dt.minute());
+  sprintf(display_line [3], "Linea 3         ");
   if(display_active){ // Display Active
     lcd.setCursor(0,0);
     lcd.print(display_line[0]);
@@ -553,9 +590,11 @@ void display(float temp1, float temp2, int r_time, time_t today, time_t next, Da
     Serial.print(F("Running time: "));
     Serial.println(r_time);
     Serial.print(F("Date/Time: "));
-    Serial.println(today);
+    // Serial.println(today);
+    print_time(today);
     Serial.print(F("Time to target: "));
-    Serial.println(next-today);
+    // Serial.println(next-today);
+    Serial.println(next.unixtime()-today.unixtime());
   };
   if(debug){
     Serial.print(F("Water temperature: "));
@@ -567,15 +606,17 @@ void display(float temp1, float temp2, int r_time, time_t today, time_t next, Da
     Serial.print(F("Running time: "));
     Serial.println(r_time);
     Serial.print(F("Date/Time: "));
-    Serial.println(today);
+    // Serial.println(today);
+    print_time(today);
     Serial.print(F("Time to target: "));
-    Serial.println(next-today);
+    Serial.println(next.unixtime()-today.unixtime());
     Serial.print(F("Performance: "));
     Serial.print(time_per_degree);
     Serial.println(F(" secs per degree"));
     Serial.print(F("Programmed: "));
     Serial.println(!stop_programm);
     Serial.print(F("Next: "));
-    Serial.println(next);
+    // Serial.println(next);
+    print_time(next);
   };
 };
