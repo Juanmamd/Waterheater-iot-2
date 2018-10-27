@@ -9,7 +9,9 @@
     // heater status
     // next schedule
     // Text [16]
-// save/restore schedules and variables from eeprom
+// Use DS3231.h library instead of RTLib.h
+  // read temperature from RTClib
+// Add external temperature sensor for external
 
 // Project pinout
 // D2	- Stop program button
@@ -149,7 +151,7 @@ void setup() {
   // pinMode(displayPin,INPUT);
   // attachInterrupt(digitalPinToInterrupt(displayPin),display_control_int, RISING);
   attachInterrupt(digitalPinToInterrupt(stop_button),stop_programm_int, RISING); // Stop programm interrupt
-  attachInterrupt(digitalPinToInterrupt(displayLine),display_show_line, RISING);
+  attachInterrupt(digitalPinToInterrupt(displayLine),display_show_line, RISING); // Show next lcd line button
 
   radio.begin();
   radio.setPALevel(RF24_PA_LOW);
@@ -322,6 +324,7 @@ void load_schedules(struct dailyprog *schedule){ // TODO
     }
     // schedule=EEPROM.get(eeprom_pos,dailyprog [14]);
   }else{
+    // Default schedule
     schedule[0].weekday=1;
     schedule[0].use_time=75;  // 10:15 am.  (10-4)*12 + 15/5=75  75*5=375  375/60 = 6,25 6h 15min + 4.00 = 10,15
     schedule[1].weekday=1;
@@ -368,62 +371,41 @@ void display_show_line(){
   // };
 };
 
-// void display_control_int(){
-//   display_active++;
-//   if(display_active>2)display_active=0;
-//   Serial.println(F("Display buttons pressed: "));
-//   Serial.println(display_active);
-//   switch(display_active){
-//     case 0:
-//       lcd.noDisplay();
-//       ;
-//     case 1:
-//       lcd.display();
-//       lcd.noBacklight();
-//       ;
-//     case 2:
-//       lcd.display();
-//       lcd.backlight();
-//       ;
+// void send_data(){
+//   radio.stopListening();
+//   Serial.println(F("Now sending"));
+//   unsigned long start_time = micros();                             // Take the time, and send it.  This will block until complete
+// /* Enviar struct */
+//    if (!radio.write( &start_time, sizeof(unsigned long) )){
+//      Serial.println(F("Send failed"));
+//    };
+//   radio.startListening();                                    // Now, continue listening
+//   unsigned long started_waiting_at = micros();               // Set up a timeout period, get the current microseconds
+//   boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
+//   while ( ! radio.available() ){                             // While nothing is received
+//     if (micros() - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
+//         timeout = true;
+//         break;
+//     };
 //   };
-//   delay(50);
+//   if ( timeout ){                                             // Describe the results
+//       Serial.println(F("Failed, response ACK timed out."));
+//   }else{
+//       unsigned long got_time;                                 // Grab the response, compare, and send to debugging spew
+//       radio.read( &got_time, sizeof(unsigned long) );
+//       unsigned long end_time = micros();
+//       // Spew it
+//       Serial.print(F("Sent "));
+//       Serial.print(start_time);
+//       Serial.print(F(", Got response "));
+//       Serial.print(got_time);
+//       Serial.print(F(", Round-trip delay "));
+//       Serial.print(end_time-start_time);
+//       Serial.println(F(" microseconds"));
+//   };
+//   // Try again 1s later
+//   delay(3000);
 // };
-
-void send_data(){
-  radio.stopListening();
-  Serial.println(F("Now sending"));
-  unsigned long start_time = micros();                             // Take the time, and send it.  This will block until complete
-/* Enviar struct */
-   if (!radio.write( &start_time, sizeof(unsigned long) )){
-     Serial.println(F("Send failed"));
-   };
-  radio.startListening();                                    // Now, continue listening
-  unsigned long started_waiting_at = micros();               // Set up a timeout period, get the current microseconds
-  boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
-  while ( ! radio.available() ){                             // While nothing is received
-    if (micros() - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
-        timeout = true;
-        break;
-    };
-  };
-  if ( timeout ){                                             // Describe the results
-      Serial.println(F("Failed, response ACK timed out."));
-  }else{
-      unsigned long got_time;                                 // Grab the response, compare, and send to debugging spew
-      radio.read( &got_time, sizeof(unsigned long) );
-      unsigned long end_time = micros();
-      // Spew it
-      Serial.print(F("Sent "));
-      Serial.print(start_time);
-      Serial.print(F(", Got response "));
-      Serial.print(got_time);
-      Serial.print(F(", Round-trip delay "));
-      Serial.print(end_time-start_time);
-      Serial.println(F(" microseconds"));
-  };
-  // Try again 1s later
-  delay(3000);
-};
 
 void stop_programm_int(){
   // if(last_interrupt+debouncing < t_now){
@@ -433,14 +415,6 @@ void stop_programm_int(){
     last_interrupt=t_now;
   // };
 };
-
-// void set_date(time_t date){  // Need to implement an NTP-like using RF24 get_date()
-//   setTime(20,8,00,20,10 ,2018);
-//   };
-//
-// time_t get_date(){ // TODO
-//   // Gets date and time from external source
-//   };
 
 void show_schedules(struct dailyprog *schedule){
     int sch_i;
