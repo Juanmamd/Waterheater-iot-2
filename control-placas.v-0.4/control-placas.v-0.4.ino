@@ -83,7 +83,7 @@ const byte displayLine PROGMEM=3;       // scroll display lines
 const byte ProgrammedLed PROGMEM=4;
 
 //System variables
-int debug=1;
+int debug=0;
 
 
 int loop_time = 100;  					     // time to sleep earch loop, in secs
@@ -141,6 +141,13 @@ tmElements_t timeElements;
 
 void setup() {
   Serial.begin(115200);
+  lcd.begin(16,2,LCD_5x8DOTS);
+  lcd.createChar(0, char_OFF);
+  lcd.createChar(1, char_ON);
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(F("Water heater IoT"));
+
   // unsave_schedules(); // Set eeprom_pos -2 to 0
   load_schedules(schedule);
   show_schedules(schedule);
@@ -157,7 +164,17 @@ void setup() {
   radio.setPALevel(RF24_PA_LOW);
   radio.openWritingPipe(pipe);
   radio.openReadingPipe(1,pipe);
+
   sensorDS18B20.begin();
+  water_temp = get_watertemp();
+  if(water_temp=-127){
+    Serial.println("Sensor DS18B20 no found");
+    lcd.setCursor(0,0);
+    lcd.print(F("Temperat. error"));
+    lcd.setCursor(0,1);
+    lcd.print(F("DS18B20 missing"));
+    while(1);
+  }
   // if(!sensorDS18B20.isConnected()){
   //   Serial.println(F("Error iniciando sonda de temperatura"));
   //   while(1);
@@ -168,12 +185,6 @@ void setup() {
 // Initialize programm led
   digitalWrite(ProgrammedLed,!stop_programm);
 
-  lcd.begin(16,2,LCD_5x8DOTS);
-  lcd.createChar(0, char_OFF);
-  lcd.createChar(1, char_ON);
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print(F("Water heater IoT"));
 
     if (!rtc.begin()) {
     // if (! rtc.isrunning()) {
@@ -194,7 +205,7 @@ void setup() {
   //   // Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
   //   // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
   // }
-  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
   dt=rtc.now();
   boot_time=dt;
   if(debug)print_time(dt);
@@ -228,11 +239,6 @@ void setup() {
 };
 
 void loop(){
-  // time_t mynext_schedule;
-
- // if(digitalRead(stop_button) == HIGH) stop_programm_int();
- // if(digitalRead(displayPin) == HIGH) display_control_int();
- // if(digitalRead(displayLine) == HIGH) display_show_line();
 
   dt=rtc.now();
   t_now=dt.unixtime();
