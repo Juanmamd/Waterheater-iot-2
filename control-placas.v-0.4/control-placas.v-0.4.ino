@@ -42,11 +42,10 @@
 // Thermpair K MAX6675: 	50 mA
 // Arduino:
 
-
 #include <Time.h>
 #include <TimeLib.h>
 #include <Wire.h>
-#include "RTClib.h"
+#include <DS3231.h>
 
 // #include <max6675.h>
 #include <avr/pgmspace.h>
@@ -133,11 +132,11 @@ long int uptime;
 int debouncing=1; // minimum time between button Pressed
 time_t last_interrupt=0;
 
-RTC_DS3231 rtc;
 // RTC_DS3231 rtc;
+DS3231 clock;
+RTClib rtc;
 DateTime dt;
-tmElements_t timeElements;
-byte DoW;
+float clock_temp;
 
 
 void setup() {
@@ -186,14 +185,14 @@ void setup() {
 // Initialize programm led
   digitalWrite(ProgrammedLed,!stop_programm);
 
-
-    if (!rtc.begin()) {
-    // if (! rtc.isrunning()) {
-    //   Serial.println("RTC is NOT running");
-    // };
-      Serial.println(F("Couldn't find RTC"));
-      while (1);
-    }
+    //
+    // if (!rtc.begin()) {
+    // // if (! rtc.isrunning()) {
+    // //   Serial.println("RTC is NOT running");
+    // // };
+    //   Serial.println(F("Couldn't find RTC"));
+    //   while (1);
+    // }
   // Si se ha perdido la corriente, fijar fecha y hora
   // if (rtc.lostPower()) {
   //   // Fijar a fecha y hora de compilacion
@@ -207,8 +206,16 @@ void setup() {
   //   // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
   // }
   // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-  DoW=DayOfWeek(rtc.year(),rtc.month(),rtc.day());
-  rtc.setDoW(DoW);
+
+  clock.setClockMode(0);
+  clock.setYear(18);
+  clock.setMonth(10);
+  clock.setDate(29);
+  clock.setHour(23);
+  clock.setMinute(28);
+  clock.setSecond(00);
+  clock.setDoW(2);
+
   dt=rtc.now();
   boot_time=dt;
   if(debug)print_time(dt);
@@ -224,25 +231,19 @@ void setup() {
     Serial.println(display_line_t);
     Serial.print(F("Unix time: "));
     Serial.println(t_now);
-    Serial.print(F("Seconds time: "));
-    Serial.println(dt.secondstime());
+    // Serial.print(F("Seconds time: "));
+    // Serial.println(dt.secondstime());
     Serial.println(F("------------------------"));
     Serial.print(F("Boot time: "));
     print_time(boot_time);
     Serial.println();
   }
-
-  // timeElements={dt.second(),dt.minute(), dt.hour(),
-                  // dt.dayOfTheWeek(),dt.day(),dt.month(),dt.year()};
-  // boot_time=makeTime(timeElements);
-  // boot_time=dt.unixtime();
-  // print_time(now());
-  // Serial.println();
-  delay(2000);
+  delay(1000);
 };
 
 void loop(){
 
+  clock_temp=clock.getTemperature();
   dt=rtc.now();
   t_now=dt.unixtime();
   uptime= t_now - boot_time.unixtime();
@@ -459,19 +460,19 @@ DateTime get_next_schedule(struct dailyprog *sched){ // TODO
   // time_t return_time;
   DateTime return_time;
   // int target_weekday=weekday(t_now);
-  int target_weekday=dt.dayOfTheWeek();
+  int target_weekday=clock.getDoW();
   int sch_i=0;
   int time_found=14400; // Ten days in minutes
   int time1, time2, sch_found;
   boolean next_found=false;
 
   // time1=weekday(t_now)*1440 + hour(t_now)*60 + minute(t_now);  // Now in minutes since past sunday
-  time1=dt.dayOfTheWeek()*1440 + dt.hour()*60 + dt.minute();  // Now in minutes since past sunday
+  time1=2*1440 + dt.hour()*60 + dt.minute();  // Now in minutes since past sunday
   if(debug){
     Serial.print(F("time1: "));
-    Serial.print(dt.dayOfTheWeek());
+    // Serial.print(dt.dayOfTheWeek());
     Serial.print(F(" / "));
-    Serial.print(dt.getDoW());
+    Serial.print(clock.getDoW());
     Serial.print(F(" / "));
     Serial.print(dt.hour());
     Serial.print(F(" / "));
@@ -486,24 +487,10 @@ DateTime get_next_schedule(struct dailyprog *sched){ // TODO
       };
     sch_i++;
   };
-  // timeElements={0,sched[sch_found].use_time%12 * 5, sched[sch_found].use_time/12 + 4,
-  //                 sched[sch_found].weekday,day(t_now)+(sched[sch_found].weekday-weekday(t_now)),
-  //                 month(t_now),year(t_now)-1970};
   return_time={dt.year(),dt.month(),
-    dt.day()+sched[sch_found].weekday-dt.dayOfTheWeek(),
+    dt.day()+sched[sch_found].weekday-clock.getDoW(),
     sched[sch_found].use_time/12 + 4,
     sched[sch_found].use_time%12 * 5, 0};
-  // return_time.setyear(dt.year());
-  // return_time.setmonth(dt.month());
-  // return_time.setday(dt.day()+sched[sch_found].weekday-dt.dayOfTheWeek());
-  // return_time.sethour(sched[sch_found].use_time/12 + 4);
-  // return_time.setminute(sched[sch_found].use_time%12 * 5);
-  // return_time.setsecond(0);
-  // return_time=makeTime(timeElements);
-  // timeElements={0,sched[sch_found].use_time%12 * 5, sched[sch_found].use_time/12 + 4,
-  //                 sched[sch_found].weekday,day(t_now)+(sched[sch_found].weekday-weekday(t_now)),
-  //                 month(t_now),year(t_now)-1970};
-  // return_time=makeTime(timeElements);
   return return_time;
   };
 
@@ -555,7 +542,7 @@ void power_off_heater(){ // TODO Implement relay control
   digitalWrite(HeaterPin, LOW);
   };
 
-int log_session(){}; // TODO
+void log_session(){}; // TODO
 
 void display(float temp1, float temp2, long int r_time, DateTime today, DateTime next){
   char buff1[6], buff2[6];
@@ -571,7 +558,8 @@ void display(float temp1, float temp2, long int r_time, DateTime today, DateTime
   // sprintf(display_line [1], "T: %.2f->%.2f", temp1, temp2);
   sprintf(display_line [2], "%02d/%02d    %02d:%02d  ",next.day(),next.month(),next.hour(),next.minute());
   // sprintf(display_line [3], "%02d/%02d -- %02d:%02d  ",dt.day(), dt.month(), dt.hour(), dt.minute());
-  sprintf(display_line [3], "Linea 3         ");
+  dtostrf(clock_temp,4,2,buff1);
+  sprintf(display_line [3], "Internal: %s   ", buff1);
   if(display_active){ // Display Active
     lcd.setCursor(0,0);
     lcd.print(display_line[0]);
@@ -621,11 +609,11 @@ void display(float temp1, float temp2, long int r_time, DateTime today, DateTime
     print_time(next);
   };
 };
-
-// Implementation due to Tomohiko Sakamoto
-byte DayOfWeek(int y, byte m, byte d) {   // y > 1752, 1 <= m <= 12
-  static int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
-
-  y -= m < 3;
-  return ((y + y/4 - y/100 + y/400 + t[m-1] + d) % 7) + 1; // 01 - 07, 01 = Sunday
-}
+//
+// // Implementation due to Tomohiko Sakamoto
+// byte DayOfWeek(int y, byte m, byte d) {   // y > 1752, 1 <= m <= 12
+//   static int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+//
+//   y -= m < 3;
+//   return ((y + y/4 - y/100 + y/400 + t[m-1] + d) % 7) + 1; // 01 - 07, 01 = Sunday
+// }
