@@ -83,7 +83,7 @@ const byte displayLine PROGMEM=3;       // scroll display lines
 const byte ProgrammedLed PROGMEM=4;
 
 //System variables
-int debug=0;
+int debug=1;
 
 
 int loop_time = 100;  					     // time to sleep earch loop, in secs
@@ -130,13 +130,14 @@ byte display_line_i=1;
 byte display_active=1;
 // long int uptime=0;
 long int uptime;
-int debouncing=300; // min time between button Pressed
+int debouncing=1; // minimum time between button Pressed
 time_t last_interrupt=0;
 
 RTC_DS3231 rtc;
 // RTC_DS3231 rtc;
 DateTime dt;
 tmElements_t timeElements;
+byte DoW;
 
 
 void setup() {
@@ -167,7 +168,7 @@ void setup() {
 
   sensorDS18B20.begin();
   water_temp = get_watertemp();
-  if(water_temp=-127){
+  if(water_temp==-127){
     Serial.println("Sensor DS18B20 no found");
     lcd.setCursor(0,0);
     lcd.print(F("Temperat. error"));
@@ -205,7 +206,9 @@ void setup() {
   //   // Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
   //   // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
   // }
-  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+  DoW=DayOfWeek(rtc.year(),rtc.month(),rtc.day());
+  rtc.setDoW(DoW);
   dt=rtc.now();
   boot_time=dt;
   if(debug)print_time(dt);
@@ -256,7 +259,7 @@ void loop(){
     print_time(next_schedule);
     Serial.println();
     Serial.print(F("Now:"));
-    print_time(t_now);
+    print_time(dt);
     Serial.println();
     Serial.println(F("Time to sched: "));
     // Serial.println(time_to_minutes(time_to_sched));
@@ -264,7 +267,6 @@ void loop(){
   if (heater_on) running_time = t_now - init_time;		// Calculate running time for displaying
   // if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule && !stop_programm) {
   if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule.unixtime() && !stop_programm) {
-    Serial.println(F("Calentando"));
     if (!heater_on) {
       power_on_heater();
       init_time = t_now;
@@ -363,7 +365,8 @@ int time_to_minutes(time_t inputtime){
 };
 
 void display_show_line(){
-  // if(last_interrupt+debouncing < t_now){
+  if(debug)Serial.println(F("Interrupt display line"));
+  if(last_interrupt+debouncing < t_now){
     display_line_i++;
     if(display_line_i>NUM_DISPLAYS)display_line_i=1;
     Serial.print(F("Displaying line "));
@@ -374,7 +377,7 @@ void display_show_line(){
       Serial.print("Last interrupt: ");
       Serial.println(last_interrupt);
     }
-  // };
+  };
 };
 
 // void send_data(){
@@ -414,12 +417,12 @@ void display_show_line(){
 // };
 
 void stop_programm_int(){
-  // if(last_interrupt+debouncing < t_now){
+  if(last_interrupt+debouncing < t_now){
     stop_programm=!stop_programm;
     digitalWrite(ProgrammedLed,!stop_programm);
     Serial.println(F("Stop BUTTON Pressed"));
     last_interrupt=t_now;
-  // };
+  };
 };
 
 void show_schedules(struct dailyprog *schedule){
@@ -428,12 +431,14 @@ void show_schedules(struct dailyprog *schedule){
     for(sch_i=0;sch_i<num_schedules;sch_i++){
       Serial.print(F("Show schedule: "));
       Serial.print(week[schedule[sch_i].weekday]);
-      Serial.print(" - ");
+      Serial.print(F(" - "));
       hour=schedule[sch_i].use_time/12 + 4;
       min=schedule[sch_i].use_time%12 * 5;
       Serial.print(hour);
-      Serial.print(":");
+      Serial.print(F(":"));
       Serial.println(min);
+      // Serial.print(F(" --- "));
+      // Serial.print()
     }
 };
 
@@ -462,9 +467,20 @@ DateTime get_next_schedule(struct dailyprog *sched){ // TODO
 
   // time1=weekday(t_now)*1440 + hour(t_now)*60 + minute(t_now);  // Now in minutes since past sunday
   time1=dt.dayOfTheWeek()*1440 + dt.hour()*60 + dt.minute();  // Now in minutes since past sunday
+  if(debug){
+    Serial.print(F("time1: "));
+    Serial.print(dt.dayOfTheWeek());
+    Serial.print(F(" / "));
+    Serial.print(dt.getDoW());
+    Serial.print(F(" / "));
+    Serial.print(dt.hour());
+    Serial.print(F(" / "));
+    Serial.println(dt.minute());
+  }
   while(sch_i < num_schedules){
       time2=sched[sch_i].weekday*1440 + (sched[sch_i].use_time/12 + 4)*60 + sched[sch_i].use_time%12 * 5;
-      if(time2-time1<time_found && time2-time1>0){  // search for minimum difference (next schedule)
+      if(debug){Serial.print(F("Sched comparing: ")); Serial.print(time1); Serial.print(F(" -> ")); Serial.println(time2);}
+      if(time2-time1<time_found && time2>time1){  // search for minimum difference (next schedule)
         time_found=time2-time1;
         sch_found=sch_i;
       };
@@ -542,22 +558,27 @@ void power_off_heater(){ // TODO Implement relay control
 int log_session(){}; // TODO
 
 void display(float temp1, float temp2, long int r_time, DateTime today, DateTime next){
-  char buff1[5], buff2[5];
-  dtostrf(temp1,2,2,buff1);
-  dtostrf(temp2,2,2,buff2);
+  char buff1[6], buff2[6];
+  Serial.println(temp1);
+  Serial.println(temp2);
+  dtostrf(temp1,4,2,buff1);
+  dtostrf(temp2,4,2,buff2);
   // sprintf(display_line [0], "%02d/%02d    %02d:%02d  ",day(today),month(today),hour(today),minute(today));
   // sprintf(display_line [1], "T: %s->%s", buff1, buff2);
   // sprintf(display_line [2], "%02d/%02d    %02d:%02d  ",day(next),month(next),hour(next),minute(next));
   sprintf(display_line [0], "%02d/%02d    %02d:%02d  ",today.day(),today.month(),today.hour(),today.minute());
-  sprintf(display_line [1], "T: %s->%s", buff1, buff1);
+  sprintf(display_line [1], "T: %s->%s", buff1, buff2);
+  // sprintf(display_line [1], "T: %.2f->%.2f", temp1, temp2);
   sprintf(display_line [2], "%02d/%02d    %02d:%02d  ",next.day(),next.month(),next.hour(),next.minute());
   // sprintf(display_line [3], "%02d/%02d -- %02d:%02d  ",dt.day(), dt.month(), dt.hour(), dt.minute());
   sprintf(display_line [3], "Linea 3         ");
   if(display_active){ // Display Active
     lcd.setCursor(0,0);
     lcd.print(display_line[0]);
+    Serial.println(display_line[0]);
     lcd.setCursor(0,1);
     lcd.print(display_line[display_line_i]);
+    Serial.println(display_line[display_line_i]);
     lcd.setCursor(15,0);
     lcd.write(heater_on);
   }else{ // No display available
@@ -600,3 +621,11 @@ void display(float temp1, float temp2, long int r_time, DateTime today, DateTime
     print_time(next);
   };
 };
+
+// Implementation due to Tomohiko Sakamoto
+byte DayOfWeek(int y, byte m, byte d) {   // y > 1752, 1 <= m <= 12
+  static int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+
+  y -= m < 3;
+  return ((y + y/4 - y/100 + y/400 + t[m-1] + d) % 7) + 1; // 01 - 07, 01 = Sunday
+}
