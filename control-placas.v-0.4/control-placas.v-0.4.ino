@@ -15,10 +15,10 @@
 
 // Project pinout
 // D2	- Stop program button
-// D3	- Heater LED
+// D3	- Display line button
 // D4	- Programmed LED
-// D5	- Display control button
-// D6	- Display line button
+// D5	- not used
+// D6	- Heater LED
 // D7	- DS18B20 Temperature sensor
 // D8	- Not used
 // D9	- RF24
@@ -32,7 +32,7 @@
 // A3	- Not used
 // A4	- I2C SDA LED + RTC
 // A5	- I2C SCL LED + RTC
-// A6	- Not used
+// A6	- Control Switch
 // A7	- Not used
 
 // Stimated current consumption:
@@ -52,8 +52,8 @@
 #include <EEPROM.h>
 
 #include <SPI.h>
-#include "RF24.h"
-RF24 radio(9,10);
+//#include "RF24.h"
+//RF24 radio(9,10);
 
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
@@ -72,23 +72,26 @@ DallasTemperature sensorDS18B20(&oneWireObjeto);
 const float target_temp PROGMEM =32;  //Desired Temperature
 const float hister_temp PROGMEM =2;   //histeresis
 // float target_temp = 35;
+#define STATUS_OFF 0
+#define STATUS_ON 1
+#define STATUS_PROG 2
+byte ProgStatus= STATUS_OFF;
 
 // hardware variables
-const byte sensorPin PROGMEM  =  A0;     // select the input  pin for the potentiometer
 const byte HeaterPin PROGMEM  =  6;      // select the pin for  the LED, relay emulation
 const byte stop_button PROGMEM = 2;     // Stop programming / manual mode
-const byte displayPin PROGMEM=5;        // Display config
 const byte displayLine PROGMEM=3;       // scroll display lines
 const byte ProgrammedLed PROGMEM=4;
+const byte controlPin PROGMEM = 7;
 
 //System variables
 int debug=1;
 
 
-int loop_time = 100;  					     // time to sleep earch loop, in secs
-int time_per_degree = 300; 			     // time to raise 1 degree, in secs, initial value
+int loop_time = 100;  					     // time to sleep each loop, in msecs
+int time_per_degree = 300; 			     // time to raise 1 degree, in secs, initial value 5 min
 byte heater_autoadjust = 1;				   // weather time_per_degree is auto adjust from previous data
-int max_running_time = 3 * 60 *60 ;			 // maximum running time, 3 hours
+int max_running_time = 3 * 60 *60 ;			 // maximum running time,default  3 hours
 
 const int eeprom_pos PROGMEM =100;
                         // pos 96   time per degree (2 bytes)
@@ -100,7 +103,7 @@ struct dailyprog {
   byte use_time;  // time from 4 am to 23 am, 5 minutes interval.
 } ;
 dailyprog schedule[14]; // two schedules per day.
-char week[]={" DLMXJVS"}; // Week begins in 1, sunday
+char week[]={" LMXJVSD"}; // Week begins in 1, sunday
 byte num_schedules;
 byte max_schedules=14;
 
@@ -119,6 +122,7 @@ time_t init_time, fin_time, running_time;	// running time control
 DateTime boot_time;
 const uint64_t pipe PROGMEM = 0xE8E8F0F0E1LL;
 byte perform_adjust=0;
+int controlVal=0;
 
 LiquidCrystal_I2C lcd(LCD_I2C_ADDR, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 byte char_ON[] = {  B11111,  B10001,  B10101,  B10101,  B10101,  B10101,  B10001,  B11111  };
@@ -148,22 +152,18 @@ void setup() {
   lcd.setCursor(0,0);
   lcd.print(F("Water heater IoT"));
 
-  // unsave_schedules(); // Set eeprom_pos -2 to 0
+//  unsave_schedules(); // Set eeprom_pos -2 to 0
   load_schedules(schedule);
   show_schedules(schedule);
 
   // Prototype
   pinMode(HeaterPin,OUTPUT);
   pinMode(ProgrammedLed, OUTPUT);
-  // pinMode(displayPin,INPUT);
-  // attachInterrupt(digitalPinToInterrupt(displayPin),display_control_int, RISING);
-  attachInterrupt(digitalPinToInterrupt(stop_button),stop_programm_int, RISING); // Stop programm interrupt
-  attachInterrupt(digitalPinToInterrupt(displayLine),display_show_line, RISING); // Show next lcd line button
 
-  radio.begin();
-  radio.setPALevel(RF24_PA_LOW);
-  radio.openWritingPipe(pipe);
-  radio.openReadingPipe(1,pipe);
+//  radio.begin();
+//  radio.setPALevel(RF24_PA_LOW);
+//  radio.openWritingPipe(pipe);
+//  radio.openReadingPipe(1,pipe);
 
   sensorDS18B20.begin();
   water_temp = get_watertemp();
@@ -173,7 +173,12 @@ void setup() {
     lcd.print(F("Temperat. error"));
     lcd.setCursor(0,1);
     lcd.print(F("DS18B20 missing"));
-    while(1);
+    while(1){
+        digitalWrite(HeaterPin, HIGH);
+        delay(300);
+        digitalWrite(HeaterPin, LOW);
+        delay(300);
+      }
   }
   // if(!sensorDS18B20.isConnected()){
   //   Serial.println(F("Error iniciando sonda de temperatura"));
@@ -205,16 +210,16 @@ void setup() {
   //   // Fijar a fecha y hora específica. En el ejemplo, 21 de Enero de 2016 a las 03:00:00
   //   // rtc.adjust(DateTime(2016, 1, 21, 3, 0, 0));
   // }
-  // rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
-
-  clock.setClockMode(0);
-  clock.setYear(18);
-  clock.setMonth(10);
-  clock.setDate(29);
-  clock.setHour(23);
-  clock.setMinute(28);
-  clock.setSecond(00);
-  clock.setDoW(2);
+//  rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+//
+//  clock.setClockMode(0);
+//  clock.setYear(18);
+//  clock.setMonth(12);
+//  clock.setDate(15);
+//  clock.setHour(21);
+//  clock.setMinute(42);
+//  clock.setSecond(00);
+//  clock.setDoW(6);
 
   dt=rtc.now();
   boot_time=dt;
@@ -238,11 +243,24 @@ void setup() {
     print_time(boot_time);
     Serial.println();
   }
+  attachInterrupt(digitalPinToInterrupt(stop_button),stop_programm_int, RISING); // Stop programm interrupt
+  attachInterrupt(digitalPinToInterrupt(displayLine),display_show_line, RISING); // Show next lcd line button
   delay(1000);
 };
 
 void loop(){
 
+  controlVal = analogRead(controlPin);
+  Serial.print("Switch value: ");
+  Serial.println(controlVal);
+  if(controlVal<150){
+    ProgStatus=STATUS_OFF;
+    stop_programm_int();
+  }else if(controlVal > 650){
+    ProgStatus=STATUS_ON;
+  }else{
+    ProgStatus=STATUS_PROG;
+  }
   clock_temp=clock.getTemperature();
   dt=rtc.now();
   t_now=dt.unixtime();
@@ -267,7 +285,11 @@ void loop(){
   };
   if (heater_on) running_time = t_now - init_time;		// Calculate running time for displaying
   // if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule && !stop_programm) {
-  if (water_temp < target_temp && time_to_warm > time_to_sched && t_now < next_schedule.unixtime() && !stop_programm) {
+  if ((water_temp < target_temp && 
+      time_to_warm > time_to_sched && 
+      t_now < next_schedule.unixtime() && 
+      ProgStatus==STATUS_PROG &&
+      !stop_programm) || (water_temp < target_temp && ProgStatus==STATUS_ON)) {
     if (!heater_on) {
       power_on_heater();
       init_time = t_now;
@@ -334,21 +356,21 @@ void load_schedules(struct dailyprog *schedule){ // TODO
     // schedule=EEPROM.get(eeprom_pos,dailyprog [14]);
   }else{
     // Default schedule
-    schedule[0].weekday=1;
+    schedule[0].weekday=7;
     schedule[0].use_time=75;  // 10:15 am.  (10-4)*12 + 15/5=75  75*5=375  375/60 = 6,25 6h 15min + 4.00 = 10,15
-    schedule[1].weekday=1;
+    schedule[1].weekday=7;
     schedule[1].use_time=38;   // 7:00    7-4=3 3*12=36
-    schedule[2].weekday=2;
+    schedule[2].weekday=1;
     schedule[2].use_time=39;   // 7:05    7-4=3 3*12=36
-    schedule[3].weekday=3;
+    schedule[3].weekday=2;
     schedule[3].use_time=40;   // 7:10    7-4=3 3*12=36
-    schedule[4].weekday=4;
+    schedule[4].weekday=3;
     schedule[4].use_time=41;   // 7:20    7-4=3 3*12=36
-    schedule[5].weekday=5;
+    schedule[5].weekday=4;
     schedule[5].use_time=42;   // 7:25    7-4=3 3*12=36
-    schedule[6].weekday=6;
+    schedule[6].weekday=5;
     schedule[6].use_time=43;   // 7:30    7-4=3 3*12=36
-    schedule[7].weekday=7;
+    schedule[7].weekday=6;
     schedule[7].use_time=198;  // 20:30 am.  (20-4)*12=192 + 30/5=6 198 75*5=375  375/60 = 6,25 6h 15min + 4.00 = 10,15
     num_schedules=8;
     save_schedules();
@@ -381,41 +403,6 @@ void display_show_line(){
   };
 };
 
-// void send_data(){
-//   radio.stopListening();
-//   Serial.println(F("Now sending"));
-//   unsigned long start_time = micros();                             // Take the time, and send it.  This will block until complete
-// /* Enviar struct */
-//    if (!radio.write( &start_time, sizeof(unsigned long) )){
-//      Serial.println(F("Send failed"));
-//    };
-//   radio.startListening();                                    // Now, continue listening
-//   unsigned long started_waiting_at = micros();               // Set up a timeout period, get the current microseconds
-//   boolean timeout = false;                                   // Set up a variable to indicate if a response was received or not
-//   while ( ! radio.available() ){                             // While nothing is received
-//     if (micros() - started_waiting_at > 200000 ){            // If waited longer than 200ms, indicate timeout and exit while loop
-//         timeout = true;
-//         break;
-//     };
-//   };
-//   if ( timeout ){                                             // Describe the results
-//       Serial.println(F("Failed, response ACK timed out."));
-//   }else{
-//       unsigned long got_time;                                 // Grab the response, compare, and send to debugging spew
-//       radio.read( &got_time, sizeof(unsigned long) );
-//       unsigned long end_time = micros();
-//       // Spew it
-//       Serial.print(F("Sent "));
-//       Serial.print(start_time);
-//       Serial.print(F(", Got response "));
-//       Serial.print(got_time);
-//       Serial.print(F(", Round-trip delay "));
-//       Serial.print(end_time-start_time);
-//       Serial.println(F(" microseconds"));
-//   };
-//   // Try again 1s later
-//   delay(3000);
-// };
 
 void stop_programm_int(){
   if(last_interrupt+debouncing < t_now){
@@ -455,7 +442,7 @@ float get_watertemp(){  //Implement according to hardware sensor
     return sensortemp;
 };
 
-// time_t get_next_schedule(struct dailyprog *sched){ // TODO
+
 DateTime get_next_schedule(struct dailyprog *sched){ // TODO
   // time_t return_time;
   DateTime return_time;
@@ -466,8 +453,8 @@ DateTime get_next_schedule(struct dailyprog *sched){ // TODO
   int time1, time2, sch_found;
   boolean next_found=false;
 
-  // time1=weekday(t_now)*1440 + hour(t_now)*60 + minute(t_now);  // Now in minutes since past sunday
-  time1=2*1440 + dt.hour()*60 + dt.minute();  // Now in minutes since past sunday
+//   time1=weekday(t_now)*1440 + hour(t_now)*60 + minute(t_now);  // Now in minutes since past sunday
+  time1=clock.getDoW()*1440 + dt.hour()*60 + dt.minute();  // Now in minutes since past sunday
   if(debug){
     Serial.print(F("time1: "));
     // Serial.print(dt.dayOfTheWeek());
@@ -484,6 +471,8 @@ DateTime get_next_schedule(struct dailyprog *sched){ // TODO
       if(time2-time1<time_found && time2>time1){  // search for minimum difference (next schedule)
         time_found=time2-time1;
         sch_found=sch_i;
+        Serial.print(F("Best found: "));
+        Serial.println(sch_i);
       };
     sch_i++;
   };
