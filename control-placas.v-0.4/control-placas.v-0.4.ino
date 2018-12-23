@@ -14,18 +14,18 @@
 // Add external temperature sensor for external
 
 // Project pinout
-// D2	- Stop program button     -- remove
+// D2	- Not used
 // D3	- Display line button
-// D4	- Programmed LED          -- remove
-// D5	- not used
-// D6	- Heater & LED
-// D7	- DS18B20 Temperature sensor -- move to D13
+// D4	- Programmed LED          
+// D5	- Heater Relay
+// D6	- Heater ON LED
+// D7	- Not used
 // D8	- Not used
-// D9	- RF24
-// D10	- RF24
-// D11	- RF24
-// D12	- RF24
-// D13	- RF24    -- DS18B20
+// D9	- Not used
+// D10	- Not used
+// D11	- Not used
+// D12	- Not used
+// D13	- DS18B20 Temperature sensor
 // A0	- Not used
 // A1	- Not used
 // A2	- Not used
@@ -64,12 +64,14 @@ const float hister_temp PROGMEM = 2;  //histeresis
 byte ProgStatus = STATUS_OFF;
 
 // hardware variables
-const byte HeaterPin PROGMEM = 6;   // select the pin for  the LED, relay emulation
-const byte stop_button PROGMEM = 2; // Stop programming / manual mode
+// const byte stop_button PROGMEM = 2; // Stop programming / manual mode
 const byte displayLine PROGMEM = 3; // scroll display lines
 const byte ProgrammedLed PROGMEM = 4;
-const byte controlPin PROGMEM = 7;
-const byte pinDatosDQ = 7; // for DS18B20
+const byte HeaterRelayPin = 5
+const byte HeaterPin PROGMEM = 6;   // select the pin for  the LED, relay emulation
+const byte controlPin PROGMEM = 13;
+
+const byte pinDatosDQ = 7; // Analog for DS18B20
 // Instancia a las clases OneWire y DallasTemperature
 OneWire oneWireObjeto(pinDatosDQ);
 DallasTemperature sensorDS18B20(&oneWireObjeto);
@@ -147,9 +149,9 @@ void setup()
   load_schedules(schedule);
   show_schedules(schedule);
 
-  // Prototype
   pinMode(HeaterPin, OUTPUT);
   pinMode(ProgrammedLed, OUTPUT);
+  pinMode(HeaterRelayPin, OUTPUT);
 
   sensorDS18B20.begin();
   water_temp = get_watertemp();
@@ -183,12 +185,10 @@ void setup()
 
   dt = rtc.now();
   boot_time = dt; // for uptime calculation
-  if (debug)
-    print_time(dt);
+  if (debug) print_time(dt);
 
   char display_line_t[17];
 
-  // attachInterrupt(digitalPinToInterrupt(stop_button),stop_programm_int, RISING); // Stop programm interrupt
   attachInterrupt(digitalPinToInterrupt(displayLine), display_show_line, RISING); // Show next lcd line button
   delay(1000);
 };
@@ -199,7 +199,6 @@ void stop_heater()
 
 void loop()
 {
-
   controlVal = analogRead(controlPin);
   if (debug)
   {
@@ -224,7 +223,7 @@ void loop()
     ProgStatus = STATUS_PROG;
     digitalWrite(ProgrammedLed, HIGH);
   }
-  clock_temp = clock.getTemperature();
+  clock_temp = clock.getTemperature();  // Internal clock temperature
   dt = rtc.now();
   t_now = dt.unixtime();
   uptime = t_now - boot_time.unixtime();
@@ -452,35 +451,43 @@ DateTime get_next_schedule(struct dailyprog *sched)
   DateTime return_time;
   int target_weekday = clock.getDoW();
   int sch_i = 0;
-  int time_found = 14400; // Ten days in minutes
+  int time_diff = 14400; // Ten days in minutes
   int time1, time2, sch_found;
+  // time_t t_next;
   boolean next_found = false;
 
+
   time1 = clock.getDoW() * 1440 + dt.hour() * 60 + dt.minute(); // Now in minutes since past sunday
-  if (debug)
-  {
-    Serial.print(F("time1: "));
-    Serial.print(F(" / "));
-    Serial.print(clock.getDoW());
-    Serial.print(F(" / "));
-    Serial.print(dt.hour());
-    Serial.print(F(" / "));
-    Serial.println(dt.minute());
-  }
+  // if (debug)
+  // {
+  //   Serial.print(F("time1: "));
+  //   Serial.print(F(" / "));
+  //   Serial.print(clock.getDoW());
+  //   Serial.print(F(" / "));
+  //   Serial.print(dt.hour());
+  //   Serial.print(F(" / "));
+  //   Serial.println(dt.minute());
+  // }
   while (sch_i < num_schedules)
   {
     // time2 = sched[sch_i].weekday * 1440 + (sched[sch_i].use_time / 12 + 4) * 60 + sched[sch_i].use_time % 12 * 5;
-    time2 = sched[sch_i].weekday*1440 + sched[sch_i].hour*60 + sched[sch_i];
-    if (debug)
-    {
-      Serial.print(F("Sched comparing: "));
-      Serial.print(time1);
-      Serial.print(F(" -> "));
-      Serial.println(time2);
+    // time2= sched[sch_i].weekday * 1440 + sched[sch_i].hour * 6 + sched[sch_i].minute;
+    if(sched[schi].weekday < targe_weekday){  // looking into next week
+      time2 = (sched[sch_i].weekday+7)*1440 + sched[sch_i].hour*60 + sched[sch_i];
+    }else{                                    // lookin into this week
+      time2 = sched[sch_i].weekday*1440 + sched[sch_i].hour*60 + sched[sch_i];
     }
-    if (time2 - time1 < time_found && time2 > time1)
+    // t_next = 
+    // if (debug)
+    // {
+    //   Serial.print(F("Sched comparing: "));
+    //   Serial.print(time1);
+    //   Serial.print(F(" -> "));
+    //   Serial.println(time2);
+    // }
+    if (time2 - time1 < time_diff && time2 > time1)
     { // search for minimum difference (next schedule)
-      time_found = time2 - time1;
+      time_diff = time2 - time1;
       sch_found = sch_i;
       Serial.print(F("Best found: "));
       Serial.println(sch_i);
@@ -489,8 +496,8 @@ DateTime get_next_schedule(struct dailyprog *sched)
   };
   return_time = {dt.year(), dt.month(),
                  dt.day() + sched[sch_found].weekday - clock.getDoW(),
-                 sched[sch_found].use_time / 12 + 4,
-                 sched[sch_found].use_time % 12 * 5, 0};
+                 sched[sch_found].hour,
+                 sched[sch_found].minute, 0};
   return return_time;
 };
 
@@ -520,8 +527,7 @@ void print_time(time_t sched)
 
 void print_time(DateTime dt)
 {
-  if (debug)
-    Serial.println(F("print_time DateTime"));
+  Serial.println(F("print_time DateTime"));
   Serial.print(dt.day());
   Serial.print(F("/"));
   Serial.print(dt.month());
@@ -536,17 +542,19 @@ void print_time(DateTime dt)
 };
 
 void power_on_heater()
-{ // TODO Implement relay control
+{ 
   Serial.println(F("Encendiendo calentador"));
   heater_on = 1;
   digitalWrite(HeaterPin, HIGH);
+  digitalWrite(HeaterRelayPin, HIGH);
 };
 
 void power_off_heater()
-{ // TODO Implement relay control
+{ 
   Serial.println(F("Apagando calentador"));
   heater_on = 0;
   digitalWrite(HeaterPin, LOW);
+  digitalWrite(HeaterRelayPin, LOW);
 };
 
 void log_session(){}; // TODO
